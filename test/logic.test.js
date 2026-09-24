@@ -3,7 +3,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Engine, findMatches, mulberry32 } = require('../logic.js');
 
-const R = 0, Y = 1, G = 2, B = 3, P = 4;
+const R = 0, Y = 1, G = 2, B = 3, P = 4, N = 5;
 
 const engineWith = (board, seed = 1) => new Engine({ board, rng: mulberry32(seed) });
 const colors = (engine) => engine.grid.map((row) => row.map((cell) => cell.color));
@@ -146,6 +146,31 @@ test('cleared purple groups refill in place', () => {
   assert.equal(spawned.length, 3);
   assert.ok(spawned.every((s) => s.appear));
   assert.deepEqual(ids(engine)[1], others);
+});
+
+test('gray tiles can never be tapped', () => {
+  // Removing the gray would line up the reds, but gray has no action.
+  const engine = engineWith([
+    [R, N, R, R],
+    [Y, G, B, Y],
+  ]);
+  assert.equal(engine.canTap(0, 1), false);
+  assert.equal(engine.tap(0, 1), null);
+});
+
+test('cleared gray groups refill in place, after every other color', () => {
+  // The purple at (1,1) turns the gray on its left up into line with the
+  // two grays above it.
+  const engine = engineWith([
+    [N, N, Y, R],
+    [N, P, R, Y],
+    [G, B, G, B],
+  ]);
+  const events = engine.tap(1, 1);
+  assert.equal(events[0].type, 'rotate');
+  const clear = events.find((e) => e.type === 'clear');
+  assert.equal(clear.color, N);
+  assert.equal(events[events.indexOf(clear) + 1].type, 'refill');
 });
 
 test('marked groups clear in color order, each followed by its own shift', () => {

@@ -12,6 +12,7 @@
   --green: #2d9d63;
   --blue: #3b78f0;
   --purple: #8e4ec6;
+  --gray: #6b7289;
   --arrow-light: #ffffff;
   --arrow-dark: #3b2a00;
 
@@ -206,6 +207,7 @@ button:focus-visible {
 .c-green { --tile: var(--green); --arrow: var(--arrow-light); }
 .c-blue { --tile: var(--blue); --arrow: var(--arrow-light); }
 .c-purple { --tile: var(--purple); --arrow: var(--arrow-light); }
+.c-gray { --tile: var(--gray); --arrow: var(--arrow-light); }
 
 .d-down svg { transform: rotate(180deg); }
 .d-left svg { transform: rotate(-90deg); }
@@ -311,7 +313,7 @@ button:focus-visible {
   padding: 0;
   list-style: none;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 6px;
 }
 

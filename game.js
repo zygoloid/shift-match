@@ -40,6 +40,7 @@
     '<svg viewBox="0 0 24 24" aria-hidden="true">' +
     '<path d="M12 5a7 7 0 1 1-7 7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>' +
     '<path fill="currentColor" d="M5 6 9.5 12.8h-9z"/></svg>';
+  const DOT = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>';
 
   let engine;
   let tiles = new Map(); // cell id -> element
@@ -65,11 +66,12 @@
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  const actionName = (color) => (color.rotate ? 'turn' : color.dir);
+  const actionName = (color) => (color.rotate ? 'turn' : color.dir || 'none');
+  const iconFor = (color) => (color.rotate ? TURN : color.dir ? ARROW : DOT);
 
   function faceHtml(color) {
     const def = COLORS[color];
-    return `<div class="face c-${def.name} d-${actionName(def)}">${def.rotate ? TURN : ARROW}</div>`;
+    return `<div class="face c-${def.name} d-${actionName(def)}">${iconFor(def)}</div>`;
   }
 
   // ---- Tiles ----
