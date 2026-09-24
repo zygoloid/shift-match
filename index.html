@@ -7,8 +7,9 @@
 <title>Shift Match</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Rubik:wght@500;700;800&family=Baloo+2:wght@700;800&family=Audiowide&family=Patrick+Hand&family=Cinzel:wght@700&family=Press+Start+2P&display=swap">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="themes.css">
 </head>
 <body>
 <main class="app">
@@ -29,6 +30,7 @@
   <section class="board-wrap" id="board-wrap">
     <div class="frame" id="frame">
       <div class="board" id="board" role="grid" aria-label="Game board"></div>
+      <div class="fx" id="fx" aria-hidden="true"></div>
       <div class="toast" id="toast" aria-hidden="true"></div>
       <div class="over" id="over" hidden>
         <p class="over-title" id="over-title">No moves left</p>
@@ -42,8 +44,14 @@
       <ol class="order" id="order" aria-label="Order in which groups clear"></ol>
     </div>
   </section>
+
+  <footer class="settings">
+    <button id="sound" class="ghost icon" type="button" aria-pressed="true" aria-label="Sound on"></button>
+    <div class="skins" id="skins" role="radiogroup" aria-label="Theme"></div>
+  </footer>
 </main>
 <script src="logic.js"></script>
+<script src="audio.js"></script>
 <script src="game.js"></script>
 </body>
 </html>

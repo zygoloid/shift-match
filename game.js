@@ -3,11 +3,25 @@
   'use strict';
 
   const { Engine, COLORS } = window.ShiftMatch;
+  const { Sound } = window.ShiftSound;
   const PALETTE = COLORS;
   const ROWS = 6;
   const COLS = 6;
   const MAX_CELL = 76;
   const BEST_KEY = 'shift-match-best';
+  const SKIN_KEY = 'shift-match-skin';
+  const MUTE_KEY = 'shift-match-muted';
+
+  // Visual themes (see themes.css). `icons` picks the symbol set; `sprinkles`
+  // makes clear particles multicolored.
+  const SKINS = [
+    { id: 'classic', name: 'Classic' },
+    { id: 'candy', name: 'Candy', sprinkles: true },
+    { id: 'neon', name: 'Arcade' },
+    { id: 'paper', name: 'Paper' },
+    { id: 'glass', name: 'Glass' },
+    { id: 'pixel', name: '8-Bit', icons: 'pixel' },
+  ];
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const T = reduced
@@ -30,6 +44,10 @@
     cursor: $('cursor'),
     hint: $('hint'),
     track: $('track'),
+    frame: $('frame'),
+    fx: $('fx'),
+    skins: $('skins'),
+    sound: $('sound'),
   };
 
   const rootStyle = document.documentElement.style;
@@ -52,6 +70,20 @@
     '<path d="M12 5a7 7 0 1 1-7 7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>' +
     '<path fill="currentColor" d="M5 6 9.5 12.8h-9z"/></svg>';
   const DOT = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>';
+  const PIXEL_ARROW =
+    '<svg viewBox="0 0 7 7" aria-hidden="true"><path fill="currentColor" d="M3 0h1v1h1v1h1v1h1v1H5v3H2V4H0V3h1V2h1V1h1z"/></svg>';
+  const PIXEL_TURN =
+    '<svg viewBox="0 0 7 7" aria-hidden="true"><path fill="currentColor" ' +
+    'd="M1 1h1v1H1zM0 2h3v1H0zM3 1h3v1H3zM5 2h1v3H5zM1 5h5v1H1zM1 3h1v2H1z"/></svg>';
+  const SPEAKER_ON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/>' +
+    '<path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+  const SPEAKER_OFF =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/>' +
+    '<path d="M16.5 9.5l5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
+
+  const sound = new Sound();
+  let skin = SKINS[0];
 
   let engine;
   let tiles = new Map(); // cell id -> element
@@ -59,26 +91,40 @@
   let busy = false;
   let best = readBest();
 
-  function readBest() {
+  // Storage can be unavailable (private mode); settings then just don't persist.
+  function load(key) {
     try {
-      return Number(localStorage.getItem(BEST_KEY)) || 0;
+      return localStorage.getItem(key);
     } catch (e) {
-      return 0;
+      return null;
     }
   }
 
-  function saveBest(value) {
+  function save(key, value) {
     try {
-      localStorage.setItem(BEST_KEY, String(value));
+      localStorage.setItem(key, String(value));
     } catch (e) {
-      // Storage can be unavailable (private mode); the best score just won't persist.
+      // Ignore.
     }
+  }
+
+  function readBest() {
+    return Number(load(BEST_KEY)) || 0;
+  }
+
+  function saveBest(value) {
+    save(BEST_KEY, value);
   }
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   const actionName = (color) => (color.rotate ? 'turn' : color.dir || 'none');
-  const iconFor = (color) => (color.rotate ? TURN : color.dir ? ARROW : DOT);
+  function iconFor(color) {
+    const pixel = skin.icons === 'pixel';
+    if (color.rotate) return pixel ? PIXEL_TURN : TURN;
+    if (color.dir) return pixel ? PIXEL_ARROW : ARROW;
+    return DOT;
+  }
 
   function faceHtml(color) {
     const def = PALETTE[color];
@@ -96,6 +142,9 @@
   function makeTile(entry) {
     const el = document.createElement('div');
     el.className = 'tile';
+    el.dataset.color = entry.color;
+    // A slight random tilt, used by the Paper theme.
+    el.style.setProperty('--tilt', (Math.random() * 6 - 3).toFixed(1) + 'deg');
     el.innerHTML = faceHtml(entry.color);
     el.setAttribute('role', 'gridcell');
     el.setAttribute('aria-label', `${PALETTE[entry.color].name} ${actionName(PALETTE[entry.color])}`);
@@ -142,6 +191,31 @@
       const el = tiles.get(id);
       if (el) el.remove();
       tiles.delete(id);
+    }
+  }
+
+  // Throws particles out from tiles that are clearing.
+  function burst(ids) {
+    if (reduced) return;
+    const perTile = Math.max(2, Math.min(6, Math.floor(36 / ids.length)));
+    const pad = 6; // frame padding
+    for (const id of ids) {
+      const el = tiles.get(id);
+      if (!el) continue;
+      const x = pad + (el._c + 0.5) * cell;
+      const y = pad + (el._r + 0.5) * cell;
+      for (let k = 0; k < perTile; k++) {
+        const color = skin.sprinkles ? Math.floor(Math.random() * PALETTE.length) : Number(el.dataset.color);
+        const angle = Math.random() * Math.PI * 2;
+        const dist = cell * (0.5 + Math.random() * 0.9);
+        const p = document.createElement('span');
+        p.className = `p c-${PALETTE[color].name}`;
+        p.style.cssText =
+          `left:${x}px;top:${y}px;--dx:${(Math.cos(angle) * dist).toFixed(1)}px;` +
+          `--dy:${(Math.sin(angle) * dist).toFixed(1)}px;--rot:${Math.round(Math.random() * 360 - 180)}deg`;
+        p.addEventListener('animationend', () => p.remove());
+        els.fx.appendChild(p);
+      }
     }
   }
 
@@ -289,6 +363,8 @@
         case 'clear':
           setPace(ev.chain);
           await moveCursor(ev.color);
+          sound.clear(ev.chain, ev.ids.length);
+          burst(ev.ids);
           tagTiles(ev.ids, 'clearing');
           els.score.textContent = ev.score;
           toast((ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`) + (ev.hinted ? ' ½' : ''));
@@ -297,12 +373,16 @@
           break;
         case 'extinct':
           markGone(ev.colors);
+          sound.extinct();
           await wait(T.mark * pace);
           break;
         case 'end':
           await finishPass();
           setPace(1);
           updateHud();
+          if (ev.won) sound.win();
+          else if (ev.gameOver) sound.lose();
+          else sound.celebrate(ev.chain);
           if (ev.gameOver) showGameOver();
           break;
       }
@@ -348,9 +428,11 @@
     const c = Math.floor((event.clientX - rect.left) / cell);
     const events = engine.tap(r, c, { hinted: hintedId !== null });
     if (!events) {
+      if (r >= 0 && r < ROWS && c >= 0 && c < COLS) sound.refuse();
       refuse(r, c);
       return;
     }
+    sound.tap();
     busy = true;
     clearHint();
     els.hint.disabled = true;
@@ -387,6 +469,51 @@
     if (engine.gameOver) showGameOver();
   }
 
+  // ---- Themes and sound ----
+
+  function applySkin(id) {
+    skin = SKINS.find((s) => s.id === id) || SKINS[0];
+    document.body.dataset.skin = skin.id;
+    sound.setInstrument(skin.id);
+    save(SKIN_KEY, skin.id);
+    for (const chip of els.skins.children) chip.setAttribute('aria-checked', String(chip.dataset.skinChip === skin.id));
+    // Redraw symbols, which differ between themes.
+    for (const el of tiles.values()) {
+      const face = el.firstElementChild;
+      el.replaceChild(document.createRange().createContextualFragment(faceHtml(Number(el.dataset.color))), face);
+    }
+    const gone = [...els.order.children].filter((li) => li.classList.contains('gone')).map((li) => Number(li.dataset.color));
+    renderLegend();
+    markGone(gone);
+    if (cursorAt >= 0) placeCursor(cursorAt, 0);
+  }
+
+  function renderSkins() {
+    els.skins.innerHTML = SKINS.map(
+      (s) => `<button class="skin-chip" type="button" role="radio" data-skin-chip="${s.id}">${s.name}</button>`
+    ).join('');
+    els.skins.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-skin-chip]');
+      if (chip) applySkin(chip.dataset.skinChip);
+    });
+  }
+
+  function setMuted(muted) {
+    sound.muted = muted;
+    els.sound.innerHTML = muted ? SPEAKER_OFF : SPEAKER_ON;
+    els.sound.setAttribute('aria-pressed', String(!muted));
+    els.sound.setAttribute('aria-label', muted ? 'Sound off' : 'Sound on');
+    save(MUTE_KEY, muted ? '1' : '0');
+  }
+
+  els.sound.addEventListener('click', () => {
+    setMuted(!sound.muted);
+    sound.tap();
+  });
+
+  renderSkins();
+  setMuted(load(MUTE_KEY) === '1');
+
   els.board.addEventListener('click', onTap);
   $('new-game').addEventListener('click', () => start());
   els.hint.addEventListener('click', showHint);
@@ -397,12 +524,16 @@
   // Keeps an in-progress game across live reloads of a hosted copy.
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) {
-    hot.snapshot(() => ({
-      grid: engine.grid.map((row) => row.map((c) => c.color)),
-      score: engine.score,
-      moves: engine.moves,
-    }));
+    hot.snapshot(() =>
+      engine.gameOver
+        ? {}
+        : { grid: engine.grid.map((row) => row.map((c) => c.color)), score: engine.score, moves: engine.moves }
+    );
   }
-  if (hot && hot.ready) hot.ready(start);
-  else start(hot && hot.data);
+  const begin = (state) => {
+    start(state);
+    applySkin(load(SKIN_KEY) || 'classic');
+  };
+  if (hot && hot.ready) hot.ready(begin);
+  else begin(hot && hot.data);
 })();
