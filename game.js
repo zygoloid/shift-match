@@ -3,15 +3,16 @@
   'use strict';
 
   const { Engine, COLORS } = window.ShiftMatch;
-  const ROWS = 9;
-  const COLS = 7;
-  const MAX_CELL = 68;
+  const PALETTE = COLORS;
+  const ROWS = 6;
+  const COLS = 6;
+  const MAX_CELL = 76;
   const BEST_KEY = 'shift-match-best';
 
   const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const T = reduced
-    ? { pop: 60, shift: 90, mark: 260, clear: 90, toast: 700 }
-    : { pop: 140, shift: 220, mark: 360, clear: 220, toast: 900 };
+    ? { pop: 60, shift: 90, mark: 260, clear: 90, toast: 700, step: 30, fade: 60 }
+    : { pop: 140, shift: 220, mark: 360, clear: 220, toast: 900, step: 90, fade: 120 };
 
   const $ = (id) => document.getElementById(id);
   const els = {
@@ -25,6 +26,8 @@
     finalScore: $('final-score'),
     overNote: $('over-note'),
     order: $('order'),
+    cursor: $('cursor'),
+    track: $('track'),
   };
 
   const rootStyle = document.documentElement.style;
@@ -68,7 +71,7 @@
   const iconFor = (color) => (color.rotate ? TURN : color.dir ? ARROW : DOT);
 
   function faceHtml(color) {
-    const def = COLORS[color];
+    const def = PALETTE[color];
     return `<div class="face c-${def.name} d-${actionName(def)}">${iconFor(def)}</div>`;
   }
 
@@ -85,7 +88,7 @@
     el.className = 'tile';
     el.innerHTML = faceHtml(entry.color);
     el.setAttribute('role', 'gridcell');
-    el.setAttribute('aria-label', `${COLORS[entry.color].name} ${actionName(COLORS[entry.color])}`);
+    el.setAttribute('aria-label', `${PALETTE[entry.color].name} ${actionName(PALETTE[entry.color])}`);
     tiles.set(entry.id, el);
     els.board.appendChild(el);
     return el;
@@ -144,7 +147,7 @@
   function resize() {
     const frame = 12; // frame padding on both sides
     const w = els.wrap.clientWidth - frame;
-    const h = els.wrap.clientHeight - frame;
+    const h = els.wrap.clientHeight - frame - els.track.offsetHeight - 16;
     const next = Math.max(24, Math.min(MAX_CELL, Math.floor(Math.min(w / COLS, h / ROWS))));
     if (next === cell && els.board.style.width) return;
     cell = next;
@@ -161,19 +164,43 @@
 
   // ---- HUD ----
 
+  // The clear-order track: a cursor walks left to right over the colors as
+  // their groups clear, and starts again from the left on the next pass.
   function renderLegend() {
-    els.order.innerHTML = COLORS.map(
-      (color, i) =>
-        `<li data-color="${i}"><span class="chip">${faceHtml(i)}</span>` +
-        `<span class="caption"><span class="num">${i + 1}</span>` +
-        `<span class="word">${actionName(color)}</span></span></li>`
+    els.order.innerHTML = PALETTE.map(
+      (color, i) => `<li data-color="${i}" aria-label="${i + 1}: ${color.name}">${faceHtml(i)}</li>`
     ).join('');
   }
 
-  function setActiveColor(colorIndex) {
-    for (const li of els.order.children) {
-      li.classList.toggle('active', Number(li.dataset.color) === colorIndex);
+  let cursorAt = -1;
+
+  function placeCursor(i, steps) {
+    els.cursor.style.transitionDuration = steps ? `${steps * T.step}ms, ${T.fade}ms` : '0ms, 0ms';
+    els.cursor.style.transform = `translateX(${els.order.children[i].offsetLeft}px)`;
+  }
+
+  async function moveCursor(i) {
+    if (cursorAt >= 0 && i <= cursorAt) {
+      hideCursor();
+      await wait(T.fade);
     }
+    if (cursorAt < 0) {
+      placeCursor(0, 0);
+      void els.cursor.offsetWidth;
+      els.cursor.style.transitionDuration = `0ms, ${T.fade}ms`;
+      els.cursor.classList.add('on');
+      cursorAt = 0;
+    }
+    if (i !== cursorAt) {
+      placeCursor(i, i - cursorAt);
+      await wait((i - cursorAt) * T.step);
+    }
+    cursorAt = i;
+  }
+
+  function hideCursor() {
+    els.cursor.classList.remove('on');
+    cursorAt = -1;
   }
 
   function updateHud() {
@@ -222,9 +249,11 @@
           const centerId = ev.cells.find((e) => e.r === ev.r && e.c === ev.c).id;
           const center = tiles.get(centerId);
           center.classList.add('turning');
+          for (const { id, toR, toC } of ev.lost) place(tiles.get(id), toR, toC);
           sync(ev.cells, true);
           await wait(T.shift);
           center.classList.remove('turning');
+          dropTiles(ev.lost.map((l) => l.id));
           break;
         }
         case 'mark':
@@ -232,7 +261,7 @@
           await wait(T.mark);
           break;
         case 'clear':
-          setActiveColor(ev.color);
+          await moveCursor(ev.color);
           tagTiles(ev.ids, 'clearing');
           els.score.textContent = ev.score;
           toast(ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`);
@@ -240,7 +269,7 @@
           dropTiles(ev.ids);
           break;
         case 'end':
-          setActiveColor(-1);
+          hideCursor();
           updateHud();
           if (ev.gameOver) showGameOver();
           break;
@@ -280,17 +309,17 @@
 
   function start(state) {
     if (state && state.grid) {
-      engine = new Engine({ board: state.grid });
+      engine = new Engine({ board: state.grid, colors: PALETTE });
       engine.score = state.score;
       engine.moves = state.moves || 0;
     } else {
-      engine = new Engine({ rows: ROWS, cols: COLS });
+      engine = new Engine({ rows: ROWS, cols: COLS, colors: PALETTE });
     }
     for (const el of tiles.values()) el.remove();
     tiles = new Map();
     busy = false;
     els.over.hidden = true;
-    setActiveColor(-1);
+    hideCursor();
     resize();
     sync(engine.layout(), false);
     updateHud();

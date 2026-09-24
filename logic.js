@@ -13,7 +13,8 @@
   };
 
   // Array order is also the order in which marked groups are cleared.
-  // Arrow colors slide a line; `rotate` turns the eight neighbors clockwise;
+  // Arrow colors slide a line; `rotate` turns the surrounding 3x3 a quarter
+  // turn clockwise;
   // a color with neither can't be tapped. After a group clears, arrow colors
   // shift the board their way to fill the gaps; colors without a direction
   // refill the gaps in place.
@@ -24,10 +25,11 @@
     { name: 'blue', dir: 'right' },
   ];
   const PURPLE = { name: 'purple', rotate: true };
+  // Gray has no action. It isn't in the default palette.
   const GRAY = { name: 'gray' };
-  const COLORS = [...ARROWS, PURPLE, GRAY];
+  const COLORS = [...ARROWS, PURPLE];
 
-  // Neighbour offsets in clockwise order, starting top-left.
+  // Offsets of the eight neighbors.
   const RING = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
 
   const MIN_RUN = 3;
@@ -79,7 +81,7 @@
 
   class Engine {
     // `board` optionally gives the starting colors as rows of color indexes.
-    constructor({ rows = 9, cols = 7, colors = COLORS, rng = Math.random, board } = {}) {
+    constructor({ rows = 6, cols = 6, colors = COLORS, rng = Math.random, board } = {}) {
       this.rows = board ? board.length : rows;
       this.cols = board ? board[0].length : cols;
       this.colors = colors;
@@ -228,24 +230,39 @@
       return spawned;
     }
 
-    // Turns the tiles around (r, c) one step clockwise. At an edge, the tiles
-    // that exist move along the part of the ring that is on the board.
+    // Turns the 3x3 around (r, c) a quarter turn clockwise. Near an edge,
+    // tiles turned off the board are lost and new tiles turn in from off the
+    // board. Returns the new tiles with where they come from, and the lost
+    // tiles with where they go.
     rotate(r, c) {
-      const ring = RING.map(([dr, dc]) => [r + dr, c + dc]).filter(
-        ([rr, cc]) => rr >= 0 && rr < this.rows && cc >= 0 && cc < this.cols
-      );
-      const cells = ring.map(([rr, cc]) => this.grid[rr][cc]);
-      ring.forEach(([rr, cc], i) => {
-        this.grid[rr][cc] = cells[(i - 1 + cells.length) % cells.length];
-      });
+      const onBoard = (rr, cc) => rr >= 0 && rr < this.rows && cc >= 0 && cc < this.cols;
+      const landed = [];
+      const lost = [];
+      // Offset (dr, dc) turns clockwise to (dc, -dr).
+      for (const [dr, dc] of RING) {
+        if (!onBoard(r + dr, c + dc)) continue;
+        const cell = this.grid[r + dr][c + dc];
+        this.grid[r + dr][c + dc] = null;
+        if (onBoard(r + dc, c - dr)) landed.push([cell, r + dc, c - dr]);
+        else lost.push({ id: cell.id, toR: r + dc, toC: c - dr });
+      }
+      for (const [cell, rr, cc] of landed) this.grid[rr][cc] = cell;
+      const spawned = [];
+      for (const [dr, dc] of RING) {
+        if (!onBoard(r + dr, c + dc) || this.grid[r + dr][c + dc]) continue;
+        const cell = this.newCell();
+        this.grid[r + dr][c + dc] = cell;
+        // The tile landing at offset (dr, dc) started at (-dc, dr).
+        spawned.push({ id: cell.id, fromR: r - dc, fromC: c + dr });
+      }
+      return { spawned, lost };
     }
 
     // Applies the tapped tile's own action and returns the event for it.
     applyMove(r, c) {
       const color = this.colors[this.grid[r][c].color];
       if (color.rotate) {
-        this.rotate(r, c);
-        return { type: 'rotate', r, c };
+        return { type: 'rotate', r, c, ...this.rotate(r, c) };
       }
       this.grid[r][c] = null;
       return { type: 'shift', dir: color.dir, spawned: this.shift(color.dir) };
@@ -281,7 +298,7 @@
 
       const move = this.applyMove(r, c);
       if (move.type === 'rotate') {
-        events.push({ type: 'rotate', r, c, cells: this.layout() });
+        events.push({ type: 'rotate', r, c, cells: this.layout(move.spawned), lost: move.lost });
       } else {
         events.push({ type: 'remove', ids: [tapped.id] });
         events.push({ type: 'shift', dir: move.dir, cells: this.layout(move.spawned) });

@@ -34,12 +34,11 @@
         <button id="play-again" type="button">Play again</button>
       </div>
     </div>
+    <div class="track" id="track">
+      <div class="cursor" id="cursor" aria-hidden="true"></div>
+      <ol class="order" id="order" aria-label="Order in which groups clear"></ol>
+    </div>
   </section>
-
-  <footer class="legend">
-    <p class="legend-hint">Tap an arrow to pull its line that way, or a purple tile to turn its neighbors clockwise. Gray tiles can't be tapped. A move must line up 3 or more. Groups clear in this order, each one shifting the board its own way:</p>
-    <ol class="order" id="order"></ol>
-  </footer>
 </main>
 <script src="logic.js"></script>
 <script src="game.js"></script>

@@ -1,30 +1,32 @@
 // Plays whole games with a chosen move picker to see how often the board runs
 // out of legal moves.
 //
-//   node tools/simulate.js [--colors arrows|purple|all] [--games N] [--cap MOVES]
+//   node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
+//                          [--games N] [--cap MOVES]
 //                          [--player random|lookN|lookNxS|safeN|peekN]
 //
 // See tools/players.js for what each player does.
-const { Engine, ARROWS, PURPLE, COLORS, mulberry32 } = require('../logic.js');
+const { Engine, ARROWS, PURPLE, GRAY, mulberry32 } = require('../logic.js');
 const os = require('node:os');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 const { makePlayer } = require('./players.js');
 
-const args = { colors: 'all', games: 200, cap: 2000, player: 'random' };
+const args = { colors: 'purple', rows: 6, cols: 6, games: 200, cap: 2000, player: 'random' };
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i].replace(/^--/, '');
   if (!(key in args)) throw new Error(`Unknown option ${process.argv[i]}`);
   args[key] = typeof args[key] === 'number' ? Number(process.argv[i + 1]) : process.argv[i + 1];
 }
 
-const PALETTES = { arrows: ARROWS, purple: [...ARROWS, PURPLE], all: COLORS };
+// arrows: the four arrows; purple: plus purple (the game's palette); gray: plus gray too.
+const PALETTES = { arrows: ARROWS, purple: [...ARROWS, PURPLE], gray: [...ARROWS, PURPLE, GRAY] };
 const palette = PALETTES[args.colors];
 
 // Plays the games whose seeds are in [first, last].
 function playGames(first, last) {
   const result = { lengths: [], capped: 0, legalTotal: 0, turns: 0, minLegal: Infinity };
   for (let seed = first; seed <= last; seed++) {
-    const engine = new Engine({ colors: palette, rng: mulberry32(seed) });
+    const engine = new Engine({ rows: args.rows, cols: args.cols, colors: palette, rng: mulberry32(seed) });
     const player = makePlayer(args.player, seed + 1e6);
     while (!engine.gameOver && engine.moves < args.cap) {
       result.legalTotal += engine.legal.size;
@@ -69,7 +71,7 @@ async function main() {
 
   lengths.sort((a, b) => a - b);
   const pct = (p) => lengths[Math.min(lengths.length - 1, Math.floor(p * lengths.length))];
-  console.log(`colors: ${palette.map((c) => c.name).join(', ')}; player: ${args.player}`);
+  console.log(`${args.cols}x${args.rows}, colors: ${palette.map((c) => c.name).join(', ')}; player: ${args.player}`);
   console.log(`games: ${args.games}, cap: ${args.cap} moves, ${((Date.now() - started) / 1000).toFixed(1)}s`);
   console.log(`ended (no legal moves): ${lengths.length}, still going at cap: ${capped}`);
   if (lengths.length) {

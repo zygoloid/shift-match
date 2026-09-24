@@ -1,11 +1,12 @@
 // Run with: node --test
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Engine, findMatches, mulberry32 } = require('../logic.js');
+const { Engine, COLORS, GRAY, findMatches, mulberry32 } = require('../logic.js');
 
 const R = 0, Y = 1, G = 2, B = 3, P = 4, N = 5;
 
-const engineWith = (board, seed = 1) => new Engine({ board, rng: mulberry32(seed) });
+const WITH_GRAY = [...COLORS, GRAY];
+const engineWith = (board, colors = WITH_GRAY) => new Engine({ board, colors, rng: mulberry32(1) });
 const colors = (engine) => engine.grid.map((row) => row.map((cell) => cell.color));
 const ids = (engine) => engine.grid.map((row) => row.map((cell) => cell.id));
 const sorted = (list) => [...list].sort((a, b) => a - b);
@@ -100,39 +101,48 @@ test('new tiles do not count toward making a move legal', () => {
   assert.equal(engine.canTap(0, 2), false);
 });
 
-test('purple turns its neighbors clockwise without removing any', () => {
+test('purple turns the 3x3 around it a quarter turn clockwise', () => {
   const engine = engineWith([
-    [R, R, G],
-    [R, P, B],
-    [Y, B, Y],
+    [R, G, B, R],
+    [R, P, Y, G],
+    [Y, B, G, Y],
   ]);
   const before = ids(engine);
   const events = engine.tap(1, 1);
   assert.equal(events[0].type, 'rotate');
+  assert.deepEqual(events[0].lost, []);
   const placed = new Map(events[0].cells.map((e) => [e.id, [e.r, e.c]]));
-  assert.deepEqual(placed.get(before[1][0]), [0, 0]); // left -> top-left
-  assert.deepEqual(placed.get(before[0][0]), [0, 1]); // top-left -> top
-  assert.deepEqual(placed.get(before[0][2]), [1, 2]); // top-right -> right
-  assert.deepEqual(placed.get(before[2][0]), [1, 0]); // bottom-left -> left
+  assert.deepEqual(placed.get(before[2][0]), [0, 0]); // bottom-left -> top-left
+  assert.deepEqual(placed.get(before[1][0]), [0, 1]); // left -> top
+  assert.deepEqual(placed.get(before[0][0]), [0, 2]); // top-left -> top-right
+  assert.deepEqual(placed.get(before[0][1]), [1, 2]); // top -> right
   assert.deepEqual(placed.get(before[1][1]), [1, 1]); // purple stays
+  // The two reds from the left column now line up with the red at (0,3).
   const clear = events.find((e) => e.type === 'clear');
   assert.equal(clear.color, R);
-  assert.equal(clear.ids.length, 3);
+  assert.deepEqual(sorted(clear.ids), sorted([before[1][0], before[0][0], before[0][3]]));
 });
 
-test('purple in a corner turns the three neighbors it has', () => {
+test('purple at a corner loses tiles off the board and turns new ones in', () => {
   const engine = engineWith([
     [P, G, Y],
     [R, B, G],
     [G, Y, B],
-  ]);
-  engine.rotate(0, 0);
-  // Ring order (clockwise from the top): right (0,1), bottom-right (1,1), bottom (1,0).
+  ]).imagine();
+  const before = ids(engine);
+  const { spawned, lost } = engine.rotate(0, 0);
+  // right -> bottom; bottom and bottom-right turn off the board; new tiles
+  // turn in to the right and bottom-right from above the board.
   assert.deepEqual(colors(engine), [
-    [P, R, Y],
-    [B, G, G],
+    [P, -1, Y],
+    [G, -1, G],
     [G, Y, B],
   ]);
+  assert.deepEqual(lost, [
+    { id: before[1][1], toR: 1, toC: -1 },
+    { id: before[1][0], toR: 0, toC: -1 },
+  ]);
+  assert.deepEqual(spawned.map((s) => [s.fromR, s.fromC]), [[-1, 0], [-1, 1]]);
 });
 
 test('cleared purple groups refill in place', () => {
@@ -159,12 +169,11 @@ test('gray tiles can never be tapped', () => {
 });
 
 test('cleared gray groups refill in place, after every other color', () => {
-  // The purple at (1,1) turns the gray on its left up into line with the
-  // two grays above it.
+  // The purple at (1,1) turns two grays into line with the one at (0,3).
   const engine = engineWith([
-    [N, N, Y, R],
-    [N, P, R, Y],
-    [G, B, G, B],
+    [N, G, B, N],
+    [N, P, Y, G],
+    [Y, B, G, Y],
   ]);
   const events = engine.tap(1, 1);
   assert.equal(events[0].type, 'rotate');
