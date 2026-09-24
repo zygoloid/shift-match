@@ -37,16 +37,19 @@
   // legal. It never matches anything.
   const UNKNOWN = { id: -1, color: -1 };
 
-  // Small seeded PRNG so tests and simulations are reproducible.
+  // Small seeded PRNG so tests and simulations are reproducible. `clone()`
+  // returns a generator that will produce the same numbers from here on.
   function mulberry32(seed) {
     let a = seed >>> 0;
-    return function () {
+    const next = function () {
       a = (a + 0x6d2b79f5) >>> 0;
       let t = a;
       t = Math.imul(t ^ (t >>> 15), t | 1);
       t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
+    next.clone = () => mulberry32(a);
+    return next;
   }
 
   // Returns every cell that is part of a horizontal or vertical run of
@@ -76,14 +79,14 @@
 
   class Engine {
     // `board` optionally gives the starting colors as rows of color indexes.
-    constructor({ rows = 9, cols = 7, moves = Infinity, colors = COLORS, rng = Math.random, board } = {}) {
+    constructor({ rows = 9, cols = 7, colors = COLORS, rng = Math.random, board } = {}) {
       this.rows = board ? board.length : rows;
       this.cols = board ? board[0].length : cols;
       this.colors = colors;
       this.rng = rng;
       this.nextId = 1;
       this.score = 0;
-      this.movesLeft = moves;
+      this.moves = 0;
       this.previewing = false;
       if (board) {
         this.grid = board.map((row) => row.map((color) => this.newCell(color)));
@@ -150,16 +153,18 @@
       return this.legal.has(r + ',' + c);
     }
 
-    get outOfMoves() {
-      return this.movesLeft <= 0;
-    }
-
-    get stuck() {
+    // The game ends when no move lines up a group.
+    get gameOver() {
       return this.legal.size === 0;
     }
 
-    get gameOver() {
-      return this.outOfMoves || this.stuck;
+    // An independent copy of the game that draws new tiles from `rng`.
+    clone(rng = this.rng) {
+      const copy = Object.assign(Object.create(Engine.prototype), this);
+      copy.rng = rng;
+      copy.grid = this.grid.map((row) => row.slice());
+      copy.legal = new Set(this.legal);
+      return copy;
     }
 
     // Slides every line along `dir` to close gaps, then fills the space left
@@ -171,27 +176,29 @@
       const lineCount = vertical ? this.cols : this.rows;
       const length = vertical ? this.rows : this.cols;
       const spawned = [];
+      const kept = [];
       for (let i = 0; i < lineCount; i++) {
-        // Position j along the line counts back from the edge the cells move
-        // toward; j >= length is off the board on the entry side.
+        // Position j along the line is (headR - j*dr, headC - j*dc): it counts
+        // back from the edge the cells move toward, and j >= length is off the
+        // board on the entry side.
         const headR = vertical ? (dr < 0 ? 0 : this.rows - 1) : i;
         const headC = vertical ? i : dc < 0 ? 0 : this.cols - 1;
-        const pos = (j) => [headR - j * dr, headC - j * dc];
-        const kept = [];
+        kept.length = 0;
         for (let j = 0; j < length; j++) {
-          const [r, c] = pos(j);
-          if (this.grid[r][c]) kept.push(this.grid[r][c]);
+          const cell = this.grid[headR - j * dr][headC - j * dc];
+          if (cell) kept.push(cell);
         }
         const gap = length - kept.length;
+        if (gap === 0) continue;
         for (let j = 0; j < length; j++) {
-          const [r, c] = pos(j);
+          const r = headR - j * dr;
+          const c = headC - j * dc;
           if (j < kept.length) {
             this.grid[r][c] = kept[j];
           } else {
             const cell = this.newCell();
             this.grid[r][c] = cell;
-            const [fromR, fromC] = pos(j + gap);
-            spawned.push({ id: cell.id, fromR, fromC });
+            spawned.push({ id: cell.id, fromR: r - gap * dr, fromC: c - gap * dc });
           }
         }
       }
@@ -270,7 +277,7 @@
         events.push({ type: 'remove', ids: [tapped.id] });
         events.push({ type: 'shift', dir: move.dir, cells: this.layout(move.spawned) });
       }
-      this.movesLeft--;
+      this.moves++;
 
       // Marked cells stay marked as they move, until their color's turn to clear.
       const marked = new Map();
@@ -306,7 +313,7 @@
       events.push({
         type: 'end',
         score: this.score,
-        movesLeft: this.movesLeft,
+        moves: this.moves,
         legalMoves: this.legal.size,
         chain,
         gameOver: this.gameOver,

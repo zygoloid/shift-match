@@ -76,7 +76,7 @@ test('an arrow move is only allowed if it lines up a group', () => {
   // Green at (0,0) would pull row 0 left into B G ?, which makes nothing.
   assert.equal(engine.canTap(0, 0), false);
   assert.equal(engine.tap(0, 0), null);
-  assert.equal(engine.movesLeft, Infinity);
+  assert.equal(engine.moves, 0);
 
   // Red at (1,0) pulls the yellow below it up into Y Y Y.
   const yellowIds = [engine.grid[2][0].id, engine.grid[1][1].id, engine.grid[1][2].id];
@@ -221,13 +221,16 @@ test('every legal move clears something and the chain multiplier grows', () => {
   }
 });
 
-test('game ends when moves run out', () => {
-  const rng = mulberry32(7);
-  const engine = new Engine({ moves: 2, rng });
-  randomLegalTap(engine, rng);
-  const last = randomLegalTap(engine, rng);
-  assert.equal(last.at(-1).gameOver, true);
-  assert.equal(engine.outOfMoves, true);
+test('a clone plays out independently, with the same tiles if given a cloned rng', () => {
+  const rng = mulberry32(3);
+  const engine = new Engine({ rng });
+  const [r, c] = [...engine.legal][0].split(',').map(Number);
+  const twin = engine.clone(rng.clone());
+  engine.tap(r, c);
+  assert.equal(twin.moves, 0);
+  twin.tap(r, c);
+  assert.deepEqual(colors(twin), colors(engine));
+  assert.equal(twin.score, engine.score);
 });
 
 test('game ends when no move lines up a group', () => {
