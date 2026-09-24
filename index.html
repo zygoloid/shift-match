@@ -28,7 +28,7 @@
       <div class="board" id="board" role="grid" aria-label="Game board"></div>
       <div class="toast" id="toast" aria-hidden="true"></div>
       <div class="over" id="over" hidden>
-        <p class="over-title">Out of moves</p>
+        <p class="over-title" id="over-title">Out of moves</p>
         <p class="over-score"><span id="final-score">0</span> points</p>
         <p class="over-note" id="over-note"></p>
         <button id="play-again" type="button">Play again</button>
@@ -37,7 +37,7 @@
   </section>
 
   <footer class="legend">
-    <p class="legend-hint">Tap a tile to pull its line the way the arrow points. Groups of 3+ clear in this order, each one shifting the board its own way:</p>
+    <p class="legend-hint">Tap an arrow to pull its line that way, or a purple tile to turn its neighbors clockwise. A move must line up 3 or more. Groups clear in this order, each one shifting the board its own way:</p>
     <ol class="order" id="order"></ol>
   </footer>
 </main>
