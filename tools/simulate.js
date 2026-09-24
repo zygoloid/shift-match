@@ -1,10 +1,11 @@
 // Plays games with uniformly random legal taps and no move limit, to see how
 // often a board runs out of legal moves.
 //
-//   node tools/simulate.js [arrows|all] [games] [moveCap]
-const { Engine, ARROWS, COLORS, mulberry32 } = require('../logic.js');
+//   node tools/simulate.js [arrows|purple|all] [games] [moveCap]
+const { Engine, ARROWS, PURPLE, COLORS, mulberry32 } = require('../logic.js');
 
-const palette = process.argv[2] === 'arrows' ? ARROWS : COLORS;
+const PALETTES = { arrows: ARROWS, purple: [...ARROWS, PURPLE], all: COLORS };
+const palette = PALETTES[process.argv[2] || 'all'];
 const games = Number(process.argv[3]) || 200;
 const cap = Number(process.argv[4]) || 2000;
 
@@ -37,6 +38,6 @@ console.log(`games: ${games}, cap: ${cap} moves`);
 console.log(`ended (no legal moves): ${lengths.length}, still going at cap: ${capped}`);
 if (lengths.length) {
   const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-  console.log(`game length of ended games: min ${lengths[0]}, median ${pct(0.5)}, mean ${mean.toFixed(1)}, p90 ${pct(0.9)}, max ${lengths.at(-1)}`);
+  console.log(`game length of ended games: min ${lengths[0]}, p10 ${pct(0.1)}, median ${pct(0.5)}, mean ${mean.toFixed(1)}, p90 ${pct(0.9)}, max ${lengths.at(-1)}`);
 }
 console.log(`legal moves per turn: mean ${(legalTotal / turns).toFixed(1)}, min seen ${minLegal}`);

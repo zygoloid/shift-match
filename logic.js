@@ -13,9 +13,10 @@
   };
 
   // Array order is also the order in which marked groups are cleared.
-  // Arrow colors slide a line; `rotate` turns the eight neighbors clockwise.
-  // After a group clears, arrow colors shift the board their way to fill the
-  // gaps; colors without a direction refill the gaps in place.
+  // Arrow colors slide a line; `rotate` turns the eight neighbors clockwise;
+  // a color with neither can't be tapped. After a group clears, arrow colors
+  // shift the board their way to fill the gaps; colors without a direction
+  // refill the gaps in place.
   const ARROWS = [
     { name: 'red', dir: 'up' },
     { name: 'yellow', dir: 'down' },
@@ -23,7 +24,8 @@
     { name: 'blue', dir: 'right' },
   ];
   const PURPLE = { name: 'purple', rotate: true };
-  const COLORS = [...ARROWS, PURPLE];
+  const GRAY = { name: 'gray' };
+  const COLORS = [...ARROWS, PURPLE, GRAY];
 
   // Neighbour offsets in clockwise order, starting top-left.
   const RING = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
@@ -119,6 +121,8 @@
     // A move is legal if it lines up at least one group from tiles already on
     // the board. Tiles that would slide in are unknown, so they don't count.
     isLegal(r, c) {
+      const color = this.colors[this.grid[r][c].color];
+      if (!color.dir && !color.rotate) return false;
       const saved = this.grid;
       this.grid = saved.map((row) => row.slice());
       this.previewing = true;
@@ -311,7 +315,7 @@
     }
   }
 
-  const api = { ARROWS, PURPLE, COLORS, DIRS, Engine, findMatches, mulberry32 };
+  const api = { ARROWS, PURPLE, GRAY, COLORS, DIRS, Engine, findMatches, mulberry32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftMatch = api;
 })(typeof window !== 'undefined' ? window : globalThis);

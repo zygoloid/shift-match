@@ -5,8 +5,9 @@ A match-3 puzzle where every tile is an arrow. Open `index.html` in a browser
 
 ## Rules
 
-- Tiles come in five colors. Four are arrows: red ↑, yellow ↓, green ←,
-  blue →. The fifth, purple ↻, turns things.
+- Tiles come in six colors. Four are arrows: red ↑, yellow ↓, green ←,
+  blue →. Purple ↻ turns things. Gray • has no action and can't be tapped;
+  it only gets in the way until it's matched.
 - Tapping an arrow removes it and slides its column (↑/↓) or row (←/→) in the
   arrow's direction to close the gap. A new tile enters from the far edge.
 - Tapping a purple tile turns its eight neighbors one step clockwise (fewer at
@@ -17,10 +18,11 @@ A match-3 puzzle where every tile is an arrow. Open `index.html` in a browser
   allowed, or when the 30 taps are used up.
 - After every move, any run of 3+ same-colored tiles in a row or column is
   **marked** (outlined and pulsing). Marked tiles stay marked as they move.
-- Marked tiles clear by color, in order: red, yellow, green, blue, purple.
+- Marked tiles clear by color, in order: red, yellow, green, blue, purple,
+  gray.
   After an arrow color clears, the board shifts that color's way to fill the
-  gaps (red clears → tiles slide up, and so on). After purple clears, new
-  tiles appear in the gaps without anything moving. Any new runs get marked,
+  gaps (red clears → tiles slide up, and so on). After purple or gray clears,
+  new tiles appear in the gaps without anything moving. Any new runs get marked,
   and the cycle repeats until nothing is marked.
 - Each clear scores 10 points per tile × the chain step, which counts up
   through every clear triggered by one tap.
@@ -28,7 +30,7 @@ A match-3 puzzle where every tile is an arrow. Open `index.html` in a browser
 
 ## Does the board ever run out of moves?
 
-`node tools/simulate.js [arrows|all] [games] [moveCap]` plays games with
+`node tools/simulate.js [arrows|purple|all] [games] [moveCap]` plays games with
 uniformly random legal taps and no move limit. With 200 games capped at 2,000
 moves each:
 
@@ -36,9 +38,11 @@ moves each:
 | --- | --- | --- |
 | 4 arrows | 0 of 200 (≈400,000 moves played) | 18.4 |
 | 4 arrows + purple | 15 of 200 (≈386,000 moves; shortest 112, median 1,038) | 13.8 |
+| 4 arrows + purple + gray | 200 of 200 (shortest 4, median 102, 90% by 349) | 7.4 |
 
-So even with purple, random play runs out of moves about once every 26,000
-moves.
+With five colors, random play runs out of moves only about once every 26,000
+moves. The inert gray tile changes that: every game ends, 35 of 200 of them
+within 30 moves.
 
 ## Code
 
