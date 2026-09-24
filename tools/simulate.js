@@ -3,7 +3,7 @@
 //
 //   node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
 //                          [--extinction on|off] [--games N] [--cap MOVES]
-//                          [--player random|lookN|lookNxS|safeN|peekN]
+//                          [--player random|lookN|lookNxS|safeN|huntN]
 //
 // See tools/players.js for what each player does.
 const { Engine, ARROWS, PURPLE, GRAY, mulberry32 } = require('../logic.js');
@@ -24,7 +24,16 @@ const palette = PALETTES[args.colors];
 
 // Plays the games whose seeds are in [first, last].
 function playGames(first, last) {
-  const result = { lengths: [], wins: [], colorsLeft: [], capped: 0, legalTotal: 0, turns: 0, minLegal: Infinity };
+  const result = {
+    lengths: [],
+    wins: [],
+    colorsLeft: [],
+    extinctions: [], // extinctions[k]: moves at which the (k+1)th color died out
+    capped: 0,
+    legalTotal: 0,
+    turns: 0,
+    minLegal: Infinity,
+  };
   for (let seed = first; seed <= last; seed++) {
     const engine = new Engine({
       rows: args.rows,
@@ -39,7 +48,12 @@ function playGames(first, last) {
       result.minLegal = Math.min(result.minLegal, engine.legal.size);
       result.turns++;
       const [r, c] = player.choose(engine);
+      const before = engine.alive.length;
       engine.tap(r, c);
+      for (let k = engine.alive.length; k < before; k++) {
+        const nth = engine.colors.length - 1 - k;
+        (result.extinctions[nth] = result.extinctions[nth] || []).push(engine.moves);
+      }
     }
     if (engine.won) {
       result.wins.push(engine.moves);
@@ -78,6 +92,7 @@ async function main() {
   const lengths = results.flatMap((r) => r.lengths);
   const wins = results.flatMap((r) => r.wins).sort((a, b) => a - b);
   const colorsLeft = results.flatMap((r) => r.colorsLeft);
+  const extinctions = palette.map((_, k) => results.flatMap((r) => r.extinctions[k] || []).sort((a, b) => a - b));
   const capped = results.reduce((n, r) => n + r.capped, 0);
   const legalTotal = results.reduce((n, r) => n + r.legalTotal, 0);
   const turns = results.reduce((n, r) => n + r.turns, 0);
@@ -94,6 +109,10 @@ async function main() {
   if (wins.length) {
     console.log(`moves to win: min ${wins[0]}, median ${pct(0.5, wins)}, max ${wins.at(-1)}`);
   }
+  const died = extinctions
+    .map((list, k) => (list.length ? `#${k + 1} in ${list.length} games, median move ${pct(0.5, list)}` : ''))
+    .filter(Boolean);
+  if (died.length) console.log(`colors dying out: ${died.join('; ')}`);
   if (colorsLeft.length) {
     const counts = {};
     for (const n of colorsLeft) counts[n] = (counts[n] || 0) + 1;

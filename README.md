@@ -36,7 +36,29 @@ portrait but works on desktop too.
   through every clear triggered by one tap.
 - Best score is kept in `localStorage`.
 
-## How often is a game won?
+## Simulations
+
+`tools/simulate.js` plays many games with a chosen move picker (in
+`tools/players.js`), in parallel:
+
+    node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
+                           [--extinction on|off] [--games N] [--cap MOVES]
+                           [--player random|lookN|lookNxS|safeN|huntN]
+
+- **random** taps any legal move.
+- **lookN** looks N moves ahead, playing each candidate against one randomly
+  guessed set of incoming tiles.
+- **safeN** looks N moves ahead treating every incoming tile as a blank that
+  never matches and can't be tapped, so it only counts on tiles already on the
+  board. A cascade set off by unlucky new tiles can still end the game.
+- **huntN** is safeN that also goes after the color with the fewest tiles:
+  among moves that survive its lookahead, it picks the one leaving the fewest
+  known tiles of that color (by tapping them, clearing them, or turning them
+  off the board).
+
+Remaining ties go to the move that leaves the most legal moves.
+
+### How often is a game won?
 
 With extinction on (the game's rules), 5,000-move cap:
 
@@ -46,38 +68,23 @@ With extinction on (the game's rules), 5,000-move cap:
 | safe1 (40 games) | 7 (18%) | 18 | 15 | 2,092 |
 | safe2 | 10 (25%) | 13 | 17 | 3,984 |
 | safe3 | 8 (20%) | 13 | 19 | 3,169 |
-| peek1 | 21 (53%) | 0 | 19 | 2,195 |
+| hunt1 (200 games) | 149 (75%) | 35 | 16 | 1,360 |
+| hunt2 (40 games) | 36 (90%) | 2 | 2 | 1,336 |
+| hunt3 | 30 (75%) | 4 | 6 | 1,423 |
 
-None of these players try to win; they only try to survive. Wins take
-thousands of moves because the first color rarely dies out by accident: of
-the lost games, almost all still had all five colors. Run with
-`--extinction off` for the rules without a win.
+The safe players only try to survive, and rarely wipe out a color by
+accident. Hunting wins most games, but slowly. For hunt1, the median game
+loses its first color at move 63, its second at move 315, and its third at
+move 1,360 (hunt2: 87, 338, 1,334). The third, fourth and fifth colors go on
+the same move: with two colors left, the board is full of matches and a
+single cascade clears everything. So winning means eliminating three colors,
+and the stage with three colors left takes most of the game.
 
-## How long does a game last?
+### How long does a game last without the win condition?
 
-The tables below are from before the win condition (`--extinction off`).
+With `--extinction off`, 2,000-move cap.
 
-`tools/simulate.js` plays many games with a chosen move picker, with no move
-limit and a cap of 2,000 moves per game:
-
-    node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
-                           [--extinction on|off] [--games N] [--cap MOVES]
-                           [--player random|lookN|lookNxS|safeN|peekN]
-
-The players (in `tools/players.js`):
-
-- **random** taps any legal move.
-- **lookN** looks N moves ahead, playing each candidate against one randomly
-  guessed set of incoming tiles.
-- **safeN** looks N moves ahead treating every incoming tile as a blank that
-  never matches and can't be tapped, so it only counts on tiles already on the
-  board. A cascade set off by unlucky new tiles can still end the game.
-- **peekN** looks N moves ahead and sees the real incoming tiles: a player who
-  could see what's coming.
-
-All lookahead players break ties by the number of legal moves left afterwards.
-
-### The chosen board: 6×6, no gray
+The chosen board, 6×6 with five colors:
 
 | Player | Games that reached 2,000 moves | Median length of games that ended |
 | --- | --- | --- |
@@ -85,13 +92,11 @@ All lookahead players break ties by the number of legal moves left afterwards.
 | safe1 (40 games) | 5 | 523 |
 | safe2 | 8 | 626 |
 | safe3 | 6 | 650 |
-| peek1 | 40 | – |
 
 Random play dies quickly (10% of games by move 15), while careful play
-usually lasts hundreds of moves. Seeing the incoming tiles makes it last
-indefinitely.
+usually lasts hundreds of moves.
 
-### Other boards tried (purple as a quarter turn)
+Other boards tried (purple as a quarter turn):
 
 | Board | Random: median length | safe1: games reaching 2,000 of 40 |
 | --- | --- | --- |
@@ -105,14 +110,13 @@ indefinitely.
 7×7 without gray is too forgiving: random play often never dies. 7×7 with an
 inert gray tile also works, but gray tiles make the board harder to read.
 
-### Earlier findings on 7×9 (purple turned its ring one step)
+Earlier findings on 7×9 (when purple turned its ring one step):
 
 - Four arrows only: random play never ran out of moves in 200 games.
   Adding purple: 15 of 200 did. Adding gray too: all did, median 99 moves.
 - With six colors, sampled lookahead barely helped past one move (look1–look4
   kept 5–15 of 40 games alive to 2,000), because one guessed future almost
-  always has some surviving line. safe1–safe3 kept about 30 of 40 alive, and
-  peek1 kept all 40.
+  always has some surviving line. safe1–safe3 kept about 30 of 40 alive.
 
 ## Code
 
