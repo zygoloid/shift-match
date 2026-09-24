@@ -129,19 +129,100 @@
       src.stop(when + dur + 0.02);
     }
 
-    // A crowd clapping: many short, randomly timed noise claps.
-    applause(when, dur, intensity = 1) {
-      const claps = Math.round(dur * 26 * intensity);
-      for (let i = 0; i < claps; i++) {
-        const t = when + Math.random() * dur;
-        // Swell in, then die away.
-        const shape = Math.sin(Math.PI * Math.min(1, (t - when) / dur)) ** 0.6;
-        this.hiss(t, 0.04 + Math.random() * 0.03, {
-          hz: 900 + Math.random() * 1600,
-          q: 1.2,
-          level: 0.12 * shape * (0.6 + Math.random() * 0.4),
-        });
+    // A few recorded-style clap samples, made once: a burst of noise with an
+    // instant attack and a ~10 ms decay, shaped by one hand-cavity resonance.
+    claps() {
+      if (this.clapBuffers && this.clapBuffers.rate === this.ctx.sampleRate) return this.clapBuffers;
+      const rate = this.ctx.sampleRate;
+      const len = Math.round(rate * 0.09);
+      const buffers = [];
+      for (let v = 0; v < 10; v++) {
+        const f0 = 800 + v * 190 + Math.random() * 120; // resonance
+        const q = 1.8 + Math.random() * 2;
+        const tau = (0.006 + Math.random() * 0.006) * rate; // decay
+        // RBJ band-pass biquad.
+        const w = (2 * Math.PI * f0) / rate;
+        const alpha = Math.sin(w) / (2 * q);
+        const a0 = 1 + alpha;
+        const b0 = alpha / a0;
+        const b2 = -alpha / a0;
+        const a1 = (-2 * Math.cos(w)) / a0;
+        const a2 = (1 - alpha) / a0;
+        const buf = this.ctx.createBuffer(1, len, rate);
+        const data = buf.getChannelData(0);
+        let x1 = 0, x2 = 0, y1 = 0, y2 = 0, prev = 0, peak = 0;
+        for (let i = 0; i < len; i++) {
+          const env = i < 12 ? i / 12 : Math.exp(-(i - 12) / tau);
+          const x = (Math.random() * 2 - 1) * env;
+          const y = b0 * x + b2 * x2 - a1 * y1 - a2 * y2;
+          x2 = x1; x1 = x; y2 = y1; y1 = y;
+          // Mostly the resonance, plus some bright, high-passed crack.
+          const out = y * 2.2 + (x - prev) * 0.35;
+          prev = x;
+          data[i] = out;
+          peak = Math.max(peak, Math.abs(out));
+        }
+        for (let i = 0; i < len; i++) data[i] /= peak;
+        buffers.push(buf);
       }
+      buffers.rate = rate;
+      this.clapBuffers = buffers;
+      return buffers;
+    }
+
+    // A small room, so separate claps blend into one sound.
+    room() {
+      if (this.reverb && this.reverb.context === this.ctx) return this.reverb;
+      const ctx = this.ctx;
+      const len = Math.round(ctx.sampleRate * 1.1);
+      const ir = ctx.createBuffer(1, len, ctx.sampleRate);
+      const data = ir.getChannelData(0);
+      for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      const conv = ctx.createConvolver();
+      conv.buffer = ir;
+      const wet = ctx.createGain();
+      wet.gain.value = 0.35;
+      conv.connect(wet);
+      wet.connect(this.out);
+      this.reverb = conv;
+      return conv;
+    }
+
+    // A crowd clapping. Each of a group of clappers claps at their own steady
+    // tempo (3-5.5 claps a second) with a little timing wobble and their own
+    // hand sound; they join in over the first moment and drop out at the end.
+    applause(when, dur, intensity = 1) {
+      const ctx = this.ctx;
+      const claps = this.claps();
+      const room = this.room();
+      const bus = ctx.createGain();
+      bus.gain.value = 1;
+      bus.connect(this.out);
+      bus.connect(room);
+      const people = Math.round(20 * intensity);
+      const level = 0.4 / Math.sqrt(intensity);
+      for (let p = 0; p < people; p++) {
+        const buf = claps[Math.floor(Math.random() * claps.length)];
+        const period = 1 / (3 + Math.random() * 2.5);
+        const pitch = 0.85 + Math.random() * 0.3;
+        const loudness = level * (0.5 + Math.random() * 0.5);
+        const joins = when + Math.random() * Math.min(0.3, dur * 0.3);
+        const leaves = when + dur * (0.55 + Math.random() * 0.45);
+        for (let t = joins; t < leaves; t += period * (0.88 + Math.random() * 0.24)) {
+          // Clappers ease off as they are about to stop.
+          const fade = Math.min(1, (leaves - t) / 0.4);
+          const src = ctx.createBufferSource();
+          src.buffer = buf;
+          src.playbackRate.value = pitch * (0.97 + Math.random() * 0.06);
+          const g = ctx.createGain();
+          g.gain.value = loudness * fade * (0.75 + Math.random() * 0.25);
+          src.connect(g);
+          g.connect(bus);
+          src.start(t);
+        }
+      }
+      // The wash of a crowd under the individual claps.
+      this.hiss(when, dur, { hz: 2200, q: 0.6, level: 0.025 * intensity });
     }
 
     // A "whoo" from a crowd: noise through vowel-like formants that rise.
