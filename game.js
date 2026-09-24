@@ -34,8 +34,16 @@
 
   const rootStyle = document.documentElement.style;
   rootStyle.setProperty('--pop-ms', T.pop + 'ms');
-  rootStyle.setProperty('--shift-ms', T.shift + 'ms');
-  rootStyle.setProperty('--clear-ms', T.clear + 'ms');
+
+  // Long chains play faster: each step of a chain takes 80% as long as the
+  // one before, down to 30% of normal speed.
+  let pace = 1;
+  function setPace(chain) {
+    pace = Math.max(0.3, Math.pow(0.8, Math.max(0, chain - 1)));
+    rootStyle.setProperty('--shift-ms', Math.round(T.shift * pace) + 'ms');
+    rootStyle.setProperty('--clear-ms', Math.round(T.clear * pace) + 'ms');
+  }
+  setPace(1);
 
   const ARROW =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5 21 11.5h-5.5V21h-7v-9.5H3z"/></svg>';
@@ -182,15 +190,29 @@
   let cursorAt = -1;
 
   function placeCursor(i, steps) {
-    els.cursor.style.transitionDuration = steps ? `${steps * T.step}ms, ${T.fade}ms` : '0ms, 0ms';
+    els.cursor.style.transitionDuration = steps ? `${steps * T.step * pace}ms, ${T.fade}ms` : '0ms, 0ms';
     els.cursor.style.transform = `translateX(${els.order.children[i].offsetLeft}px)`;
   }
 
+  async function slideCursor(i) {
+    if (i === cursorAt) return;
+    placeCursor(i, i - cursorAt);
+    await wait((i - cursorAt) * T.step * pace);
+    cursorAt = i;
+  }
+
+  // Sweeps the cursor to the end of the track and fades it out.
+  async function finishPass() {
+    if (cursorAt < 0) return;
+    await slideCursor(PALETTE.length - 1);
+    hideCursor();
+    await wait(T.fade);
+  }
+
+  // Moves the cursor to color i. A color at or before the cursor belongs to
+  // the next pass, so the current pass runs to the end first.
   async function moveCursor(i) {
-    if (cursorAt >= 0 && i <= cursorAt) {
-      hideCursor();
-      await wait(T.fade);
-    }
+    if (cursorAt >= 0 && i <= cursorAt) await finishPass();
     if (cursorAt < 0) {
       placeCursor(0, 0);
       void els.cursor.offsetWidth;
@@ -198,11 +220,7 @@
       els.cursor.classList.add('on');
       cursorAt = 0;
     }
-    if (i !== cursorAt) {
-      placeCursor(i, i - cursorAt);
-      await wait((i - cursorAt) * T.step);
-    }
-    cursorAt = i;
+    await slideCursor(i);
   }
 
   function hideCursor() {
@@ -251,7 +269,7 @@
         case 'shift':
         case 'refill':
           sync(ev.cells, true);
-          await wait(T.shift);
+          await wait(T.shift * pace);
           break;
         case 'rotate': {
           const centerId = ev.cells.find((e) => e.r === ev.r && e.c === ev.c).id;
@@ -266,22 +284,24 @@
         }
         case 'mark':
           tagTiles(ev.ids, 'marked');
-          await wait(T.mark);
+          await wait(T.mark * pace);
           break;
         case 'clear':
+          setPace(ev.chain);
           await moveCursor(ev.color);
           tagTiles(ev.ids, 'clearing');
           els.score.textContent = ev.score;
           toast((ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`) + (ev.hinted ? ' ½' : ''));
-          await wait(T.clear);
+          await wait(T.clear * pace);
           dropTiles(ev.ids);
           break;
         case 'extinct':
           markGone(ev.colors);
-          await wait(T.mark);
+          await wait(T.mark * pace);
           break;
         case 'end':
-          hideCursor();
+          await finishPass();
+          setPace(1);
           updateHud();
           if (ev.gameOver) showGameOver();
           break;
@@ -360,6 +380,7 @@
     markGone(PALETTE.map((_, i) => i).filter((i) => !engine.alive.includes(i)));
     els.over.hidden = true;
     hideCursor();
+    setPace(1);
     resize();
     sync(engine.layout(), false);
     updateHud();

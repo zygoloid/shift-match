@@ -83,8 +83,20 @@
   class Engine {
     // `board` optionally gives the starting colors as rows of color indexes.
     // With `extinction`, a color whose last tile leaves the board never comes
-    // back, and emptying the board wins the game.
-    constructor({ rows = 6, cols = 6, colors = COLORS, rng = Math.random, board, extinction = true } = {}) {
+    // back, and emptying the board wins the game. With `excludeCleared`, the
+    // tiles that fill the gaps left by a cleared group are never that group's
+    // color, as long as at least two other colors remain. (With only one
+    // other color, every fill would be forced and a cascade could cycle
+    // forever.)
+    constructor({
+      rows = 6,
+      cols = 6,
+      colors = COLORS,
+      rng = Math.random,
+      board,
+      extinction = true,
+      excludeCleared = true,
+    } = {}) {
       this.rows = board ? board.length : rows;
       this.cols = board ? board[0].length : cols;
       this.colors = colors;
@@ -95,6 +107,9 @@
       this.previewing = false;
       this.unknownFill = false;
       this.extinction = extinction;
+      this.excludeCleared = excludeCleared;
+      // A color new tiles must not be, while filling after a clear; -1 if none.
+      this.fillExclude = -1;
       // Colors that new tiles can still be.
       this.alive = colors.map((_, i) => i);
       if (board) {
@@ -112,8 +127,10 @@
     newCell(color) {
       if (this.previewing || this.unknownFill) return UNKNOWN;
       if (color === undefined) {
-        if (!this.alive.length) return null;
-        color = this.alive[Math.floor(this.rng() * this.alive.length)];
+        let pool = this.alive;
+        if (this.fillExclude >= 0 && pool.length > 2) pool = pool.filter((i) => i !== this.fillExclude);
+        if (!pool.length) return null;
+        color = pool[Math.floor(this.rng() * pool.length)];
       }
       return { id: this.nextId++, color };
     }
@@ -370,11 +387,13 @@
           events.push({ type: 'clear', color: colorIndex, ids: [...ids], chain, points, hinted, score: this.score });
           const extinct = this.retireColors();
           if (extinct.length) events.push({ type: 'extinct', colors: extinct });
+          if (this.excludeCleared) this.fillExclude = colorIndex;
           if (color.dir) {
             events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir)) });
           } else {
             events.push({ type: 'refill', cells: this.layout(this.refill()) });
           }
+          this.fillExclude = -1;
           markNew();
         });
       }

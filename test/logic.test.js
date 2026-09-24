@@ -282,6 +282,36 @@ test('a color whose last tile clears never comes back', () => {
   assert.ok(!classic.tap(1, 0).some((e) => e.type === 'extinct'));
 });
 
+test('tiles filling a cleared group\'s gaps are never that color', () => {
+  // Red at (1,0) lines up three yellows; a fourth yellow at (3,1) keeps
+  // yellow alive. The three tiles that drop in after the clear aren't yellow.
+  const board = [
+    [G, B, G],
+    [R, Y, Y],
+    [Y, B, R],
+    [B, Y, B],
+  ];
+  const dropped = (excludeCleared, seed) => {
+    const engine = new Engine({ board, colors: WITH_GRAY, excludeCleared, rng: mulberry32(seed) });
+    const events = engine.tap(1, 0);
+    const clear = events.find((e) => e.type === 'clear' && e.color === Y);
+    return fillAfter(events, clear).cells.filter((e) => e.fromR !== undefined).map((e) => e.color);
+  };
+  const seeds = Array.from({ length: 50 }, (_, i) => i + 1);
+  for (const seed of seeds) assert.ok(!dropped(true, seed).includes(Y));
+  assert.ok(seeds.some((seed) => dropped(false, seed).includes(Y)));
+});
+
+test('with two colors left, fills after a clear can be either color', () => {
+  // Forcing the other color would make fills deterministic, and a cascade
+  // could alternate between the two colors forever.
+  const engine = new Engine({ board: [[R, G, R, G]], colors: WITH_GRAY, rng: mulberry32(9) });
+  assert.deepEqual(engine.alive, [R, G]);
+  engine.fillExclude = R;
+  const drawn = new Set(Array.from({ length: 40 }, () => engine.newCell().color));
+  assert.deepEqual([...drawn].sort(), [R, G]);
+});
+
 test('clearing the last color empties the board and wins', () => {
   // Green is the only green; once it's gone, only red can arrive, and the
   // full row of red clears with nothing left to refill it.
