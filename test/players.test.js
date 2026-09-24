@@ -50,3 +50,4 @@ test('the hunt target is the surviving color with the fewest tiles', () => {
   const counts = engine.alive.map((color) => countColor(engine, color));
   assert.equal(countColor(engine, player.target(engine)), Math.min(...counts));
 });
+

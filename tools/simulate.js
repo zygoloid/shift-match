@@ -2,7 +2,8 @@
 // (board cleared) or lost (no legal moves).
 //
 //   node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
-//                          [--extinction on|off] [--games N] [--cap MOVES]
+//                          [--extinction on|off] [--exclude on|off]
+//                          [--games N] [--cap MOVES]
 //                          [--player random|lookN|lookNxS|safeN|huntN]
 //
 // See tools/players.js for what each player does.
@@ -11,7 +12,17 @@ const os = require('node:os');
 const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
 const { makePlayer } = require('./players.js');
 
-const args = { colors: 'purple', rows: 6, cols: 6, extinction: 'on', games: 200, cap: 2000, player: 'random' };
+// --exclude: tiles filling a cleared group's gaps are never that group's color.
+const args = {
+  colors: 'purple',
+  rows: 6,
+  cols: 6,
+  extinction: 'on',
+  exclude: 'on',
+  games: 200,
+  cap: 2000,
+  player: 'random',
+};
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i].replace(/^--/, '');
   if (!(key in args)) throw new Error(`Unknown option ${process.argv[i]}`);
@@ -40,6 +51,7 @@ function playGames(first, last) {
       cols: args.cols,
       colors: palette,
       extinction: args.extinction === 'on',
+      excludeCleared: args.exclude === 'on',
       rng: mulberry32(seed),
     });
     const player = makePlayer(args.player, seed + 1e6);
@@ -102,7 +114,7 @@ async function main() {
   const pct = (p, list = lengths) => list[Math.min(list.length - 1, Math.floor(p * list.length))];
   console.log(`${args.cols}x${args.rows}, colors: ${palette.map((c) => c.name).join(', ')}; player: ${args.player}`);
   console.log(
-    `games: ${args.games}, cap: ${args.cap} moves, extinction ${args.extinction}, ` +
+    `games: ${args.games}, cap: ${args.cap} moves, extinction ${args.extinction}, exclude ${args.exclude}, ` +
       `${((Date.now() - started) / 1000).toFixed(1)}s`
   );
   console.log(`won: ${wins.length}, lost (no legal moves): ${lengths.length}, still going at cap: ${capped}`);
