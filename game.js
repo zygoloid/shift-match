@@ -25,6 +25,7 @@
     over: $('over'),
     finalScore: $('final-score'),
     overNote: $('over-note'),
+    overTitle: $('over-title'),
     order: $('order'),
     cursor: $('cursor'),
     hint: $('hint'),
@@ -167,6 +168,11 @@
 
   // The clear-order track: a cursor walks left to right over the colors as
   // their groups clear, and starts again from the left on the next pass.
+  // Fades out the track chips of colors that can no longer appear.
+  function markGone(colors) {
+    for (const i of colors) els.order.children[i].classList.add('gone');
+  }
+
   function renderLegend() {
     els.order.innerHTML = PALETTE.map(
       (color, i) => `<li data-color="${i}" aria-label="${i + 1}: ${color.name}">${faceHtml(i)}</li>`
@@ -219,6 +225,7 @@
   }
 
   function showGameOver() {
+    els.overTitle.textContent = engine.won ? 'Board cleared' : 'No moves left';
     const isBest = engine.score > best;
     if (isBest) {
       best = engine.score;
@@ -265,9 +272,13 @@
           await moveCursor(ev.color);
           tagTiles(ev.ids, 'clearing');
           els.score.textContent = ev.score;
-          toast(ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`);
+          toast((ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`) + (ev.hinted ? ' ½' : ''));
           await wait(T.clear);
           dropTiles(ev.ids);
+          break;
+        case 'extinct':
+          markGone(ev.colors);
+          await wait(T.mark);
           break;
         case 'end':
           hideCursor();
@@ -315,7 +326,7 @@
     const rect = els.board.getBoundingClientRect();
     const r = Math.floor((event.clientY - rect.top) / cell);
     const c = Math.floor((event.clientX - rect.left) / cell);
-    const events = engine.tap(r, c);
+    const events = engine.tap(r, c, { hinted: hintedId !== null });
     if (!events) {
       refuse(r, c);
       return;
@@ -345,6 +356,8 @@
     busy = false;
     hintedId = null;
     els.hint.disabled = engine.gameOver;
+    renderLegend();
+    markGone(PALETTE.map((_, i) => i).filter((i) => !engine.alive.includes(i)));
     els.over.hidden = true;
     hideCursor();
     resize();
@@ -353,7 +366,6 @@
     if (engine.gameOver) showGameOver();
   }
 
-  renderLegend();
   els.board.addEventListener('click', onTap);
   $('new-game').addEventListener('click', () => start());
   els.hint.addEventListener('click', showHint);

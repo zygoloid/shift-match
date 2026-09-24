@@ -11,6 +11,10 @@ const colors = (engine) => engine.grid.map((row) => row.map((cell) => cell.color
 const ids = (engine) => engine.grid.map((row) => row.map((cell) => cell.id));
 const sorted = (list) => [...list].sort((a, b) => a - b);
 
+// The shift or refill that fills the gaps left by `clear`.
+const fillAfter = (events, clear) =>
+  events.slice(events.indexOf(clear) + 1).find((e) => e.type === 'shift' || e.type === 'refill');
+
 function randomLegalTap(engine, rng) {
   const options = [...engine.legal];
   const [r, c] = options[Math.floor(rng() * options.length)].split(',').map(Number);
@@ -87,7 +91,7 @@ test('an arrow move is only allowed if it lines up a group', () => {
   const clear = events.find((e) => e.type === 'clear');
   assert.equal(clear.color, Y);
   assert.deepEqual(sorted(clear.ids), sorted(yellowIds));
-  assert.equal(events[events.indexOf(clear) + 1].dir, 'down');
+  assert.equal(fillAfter(events, clear).dir, 'down');
 });
 
 test('new tiles do not count toward making a move legal', () => {
@@ -179,7 +183,7 @@ test('cleared gray groups refill in place, after every other color', () => {
   assert.equal(events[0].type, 'rotate');
   const clear = events.find((e) => e.type === 'clear');
   assert.equal(clear.color, N);
-  assert.equal(events[events.indexOf(clear) + 1].type, 'refill');
+  assert.equal(fillAfter(events, clear).type, 'refill');
 });
 
 test('marked groups clear in color order, each followed by its own shift', () => {
@@ -201,12 +205,12 @@ test('marked groups clear in color order, each followed by its own shift', () =>
   const clears = events.filter((e) => e.type === 'clear');
   assert.equal(clears[0].color, R);
   assert.deepEqual(sorted(clears[0].ids), sorted(redIds));
-  assert.equal(events[events.indexOf(clears[0]) + 1].dir, 'up');
+  assert.equal(fillAfter(events, clears[0]).dir, 'up');
 
   // The blues moved up when the reds cleared but stayed marked.
   const blueIndex = clears.findIndex((e) => e.color === B);
   for (const id of blueIds) assert.ok(clears[blueIndex].ids.includes(id));
-  assert.equal(events[events.indexOf(clears[blueIndex]) + 1].dir, 'right');
+  assert.equal(fillAfter(events, clears[blueIndex]).dir, 'right');
 
   // Everything up to that blue clear happened in one pass through the colors.
   const firstPass = clears.slice(0, blueIndex + 1).map((e) => e.color);
@@ -256,6 +260,59 @@ test('an imagined game fills gaps with blanks that never match or move', () => {
   assert.deepEqual(imagined.grid[0].map((cell) => cell.color), [-1, -1, -1]);
   assert.equal(imagined.canTap(0, 0), false);
   assert.equal(engine.moves, 0);
+});
+
+test('a color whose last tile clears never comes back', () => {
+  const board = [
+    [G, B, G],
+    [R, Y, Y],
+    [Y, B, R],
+    [B, G, B],
+  ];
+  // Red at (1,0) lines up all three yellows on the board.
+  const engine = engineWith(board);
+  const events = engine.tap(1, 0);
+  const extinct = events.find((e) => e.type === 'extinct');
+  assert.deepEqual(extinct.colors, [Y]);
+  assert.ok(events.indexOf(extinct) < events.indexOf(fillAfter(events, events.find((e) => e.type === 'clear'))));
+  assert.ok(!engine.alive.includes(Y));
+  assert.ok(!engine.colorsOnBoard().has(Y));
+
+  const classic = new Engine({ board, colors: WITH_GRAY, extinction: false, rng: mulberry32(1) });
+  assert.ok(!classic.tap(1, 0).some((e) => e.type === 'extinct'));
+});
+
+test('clearing the last color empties the board and wins', () => {
+  // Green is the only green; once it's gone, only red can arrive, and the
+  // full row of red clears with nothing left to refill it.
+  const engine = engineWith([[R, R, G, R]]);
+  const events = engine.tap(0, 2);
+  const end = events.at(-1);
+  assert.equal(end.won, true);
+  assert.equal(end.gameOver, true);
+  assert.deepEqual(engine.grid, [[null, null, null, null]]);
+  assert.deepEqual(engine.alive, []);
+});
+
+test('a hinted turn scores half', () => {
+  const board = [
+    [G, B, G],
+    [R, Y, Y],
+    [Y, B, R],
+    [B, G, B],
+  ];
+  const plain = engineWith(board).tap(1, 0).find((e) => e.type === 'clear');
+  const hinted = engineWith(board).tap(1, 0, { hinted: true }).find((e) => e.type === 'clear');
+  assert.equal(plain.points, 30);
+  assert.equal(hinted.points, 15);
+  assert.equal(hinted.hinted, true);
+});
+
+test('new boards start with every color', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    const engine = new Engine({ rng: mulberry32(seed) });
+    assert.equal(engine.colorsOnBoard().size, COLORS.length);
+  }
 });
 
 test('game ends when no move lines up a group', () => {
