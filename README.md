@@ -38,6 +38,28 @@ portrait but works on desktop too.
   through every clear triggered by one tap.
 - Best score is kept in `localStorage`.
 
+## Sound and themes
+
+All sound is synthesized with Web Audio in `audio.js`; there are no sound
+files. Clearing a group plays a chime that climbs a pentatonic scale with
+each chain step (more notes for bigger groups). From the third step, high
+sparkles join in, then a rising whoosh. After a move whose chain reached five
+steps, the crowd applauds, and from eight steps it cheers too. Winning plays a
+fanfare with applause; losing plays a sad trombone. Taps, refused taps and a
+color dying out have their own small sounds. The speaker button mutes it all.
+
+The theme picker under the board switches between six looks, each with its
+own instrument voice for the chimes and its own particles for clears:
+
+| Theme | Look | Chimes | Particles |
+| --- | --- | --- | --- |
+| Classic | Flat tiles, follows light/dark mode | Soft bell | Dots |
+| Candy | Glossy jelly sweets on polka dots, tiles squish when matched | Marimba | Sprinkles in every color |
+| Arcade | Neon tubes on a synthwave grid, scanlines, matched tiles flicker | Detuned saw synth | Glowing sparks |
+| Paper | Tilted cut-paper tiles on kraft card with stitching | Plucked string | Falling confetti |
+| Glass | Stained glass in lead under a warm light; light sweeps across matches | Glass bell | Shards |
+| 8-Bit | Pixel-art symbols, bevels, stepped motion, blinking matches | Square wave | Square pixels |
+
 ## Simulations
 
 `tools/simulate.js` plays many games with a chosen move picker (in
@@ -138,7 +160,10 @@ Earlier findings on 7×9 (when purple turned its ring one step):
   that describe the whole cascade. `Engine.clone()` and `Engine.imagine()`
   copy a game for lookahead.
 - `game.js`: renders the board and replays those events with animations.
-- `style.css`: layout and theme (follows the system light/dark setting).
+- `style.css`: layout and the Classic look (follows the system light/dark
+  setting).
+- `themes.css`: the other five themes.
+- `audio.js`: synthesized sound effects.
 - `test/`: engine and player tests; run with `node --test`.
 - `tools/simulate.js`: plays many games in parallel and reports how long
   they last.

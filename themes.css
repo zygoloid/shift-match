@@ -1,0 +1,347 @@
+/* Visual themes. Each sets `data-skin` on <body>; "classic" is style.css as
+   is. Themes commit to one look, so they don't follow light/dark mode. */
+
+/* Theme chips preview their own theme. */
+.skin-chip[data-skin-chip="classic"] { --chip-bg: #e3e6ef; --chip-ink: #1b1e2b; font-family: "Rubik", system-ui, sans-serif; }
+.skin-chip[data-skin-chip="candy"] { --chip-bg: #ffd6e7; --chip-ink: #8a1f5c; font-family: "Baloo 2", ui-rounded, sans-serif; font-weight: 800; }
+.skin-chip[data-skin-chip="neon"] { --chip-bg: #1a0638; --chip-ink: #ff5ae0; font-family: "Audiowide", system-ui, sans-serif; text-shadow: 0 0 6px #ff2bd6; }
+.skin-chip[data-skin-chip="paper"] { --chip-bg: #d8c3a0; --chip-ink: #3b2f22; font-family: "Patrick Hand", cursive; font-size: 15px; padding-block: 6px; }
+.skin-chip[data-skin-chip="glass"] { --chip-bg: linear-gradient(135deg, #c8102e, #7b2fbf 50%, #1f4fd1); --chip-ink: #fff3c4; font-family: "Cinzel", Georgia, serif; }
+.skin-chip[data-skin-chip="pixel"] { --chip-bg: #1d2b53; --chip-ink: #ffec27; font-family: "Press Start 2P", monospace; font-size: 9px; border-radius: 0; padding-block: 10px; }
+
+/* ---- Candy Shop: glossy jelly sweets on a polka-dot wrapper ---- */
+
+body[data-skin="candy"] {
+  color-scheme: light;
+  --ground: #ffe4ef;
+  --well: #fff7fb;
+  --well-edge: #ffc2da;
+  --ink: #6a2350;
+  --muted: #b0648f;
+  --mark: #6a2350;
+  --scrim: rgba(255, 240, 247, 0.92);
+  --red: #ff4f7e;
+  --yellow: #ffc93c;
+  --green: #2fd198;
+  --blue: #4aa3ff;
+  --purple: #b377f2;
+  --arrow-dark: #7a4a00;
+  --display: "Baloo 2", ui-rounded, system-ui, sans-serif;
+  background:
+    radial-gradient(circle, #ffd0e3 3px, transparent 3.5px) 0 0 / 26px 26px,
+    radial-gradient(circle, #ffd0e3 3px, transparent 3.5px) 13px 13px / 26px 26px,
+    var(--ground);
+}
+
+[data-skin="candy"] .frame {
+  border-radius: 28px;
+  box-shadow: inset 0 0 0 2px #ffc2da, 0 6px 0 #ffc2da;
+}
+
+[data-skin="candy"] .board { border-radius: 22px; }
+
+[data-skin="candy"] .face {
+  border-radius: 44%;
+  background:
+    radial-gradient(ellipse 30% 20% at 32% 24%, rgba(255, 255, 255, 0.85), transparent 70%),
+    radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--tile) 65%, white), var(--tile) 72%);
+  --face-shadow:
+    inset 0 calc(var(--cell) * -0.07) 0 color-mix(in srgb, var(--tile) 72%, black),
+    0 3px 6px rgba(160, 40, 100, 0.2);
+}
+
+[data-skin="candy"] .face svg { filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.25)); }
+
+[data-skin="candy"] .tile.marked .face { animation-name: squish; }
+
+@keyframes squish {
+  from { transform: scale(1, 1); }
+  to { transform: scale(1.1, 0.84); }
+}
+
+/* Sprinkles */
+[data-skin="candy"] .p {
+  width: 4px;
+  height: 11px;
+  margin: -5px 0 0 -2px;
+  border-radius: 3px;
+}
+
+/* ---- Night Arcade: neon tubes over a synthwave grid ---- */
+
+body[data-skin="neon"] {
+  color-scheme: dark;
+  --ground: #0d0221;
+  --well: rgba(20, 6, 48, 0.85);
+  --well-edge: #ff2bd6;
+  --ink: #f3e9ff;
+  --muted: #a58bd6;
+  --mark: #ffffff;
+  --scrim: rgba(13, 2, 33, 0.88);
+  --red: #ff2e63;
+  --yellow: #ffe45e;
+  --green: #2dffb3;
+  --blue: #26c6ff;
+  --purple: #c86bff;
+  --display: "Audiowide", system-ui, sans-serif;
+  background:
+    linear-gradient(to bottom, transparent 50%, rgba(255, 43, 214, 0.2)),
+    repeating-linear-gradient(to right, rgba(255, 43, 214, 0.13) 0 1px, transparent 1px 44px),
+    repeating-linear-gradient(to bottom, rgba(38, 198, 255, 0.1) 0 1px, transparent 1px 44px),
+    var(--ground);
+}
+
+[data-skin="neon"] .wordmark { text-shadow: 0 0 8px #ff2bd6, 0 0 20px #ff2bd6; }
+[data-skin="neon"] .stat .value { text-shadow: 0 0 10px rgba(38, 198, 255, 0.8); }
+
+[data-skin="neon"] .frame {
+  box-shadow: 0 0 0 2px #ff2bd6, 0 0 24px rgba(255, 43, 214, 0.55), inset 0 0 20px rgba(255, 43, 214, 0.3);
+}
+
+/* Scanlines */
+[data-skin="neon"] .frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 0 1px, transparent 1px 3px);
+}
+
+[data-skin="neon"] .face {
+  border-radius: 20%;
+  border: 2px solid var(--tile);
+  background: color-mix(in srgb, var(--tile) 14%, transparent);
+  color: var(--tile);
+  --face-shadow:
+    0 0 10px color-mix(in srgb, var(--tile) 70%, transparent),
+    inset 0 0 10px color-mix(in srgb, var(--tile) 45%, transparent);
+}
+
+[data-skin="neon"] .face svg { filter: drop-shadow(0 0 4px var(--tile)); }
+
+[data-skin="neon"] .tile.marked .face { animation-name: flicker; animation-duration: 300ms; }
+
+@keyframes flicker {
+  0% { opacity: 1; }
+  45% { opacity: 1; }
+  50% { opacity: 0.45; }
+  60% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+[data-skin="neon"] .toast { box-shadow: 0 0 16px #ff2bd6; }
+
+[data-skin="neon"] .p {
+  width: 5px;
+  height: 5px;
+  box-shadow: 0 0 8px 2px var(--tile);
+}
+
+/* ---- Paper Craft: cut-paper tiles on kraft card ---- */
+
+body[data-skin="paper"] {
+  color-scheme: light;
+  --ground: #d8c3a0;
+  --well: #c9b08a;
+  --well-edge: #a88b61;
+  --ink: #3b2f22;
+  --muted: #6e5b43;
+  --mark: #3b2f22;
+  --scrim: rgba(216, 195, 160, 0.92);
+  --red: #d9534a;
+  --yellow: #e7b43f;
+  --green: #6f9e5a;
+  --blue: #4f76a8;
+  --purple: #8a64a8;
+  --arrow-light: #fff6e6;
+  --arrow-dark: #3b2f22;
+  --display: "Patrick Hand", "Comic Sans MS", cursive;
+  --body: "Patrick Hand", "Comic Sans MS", cursive;
+  background:
+    repeating-linear-gradient(115deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 7px),
+    repeating-linear-gradient(25deg, rgba(0, 0, 0, 0.04) 0 1px, transparent 1px 5px),
+    var(--ground);
+}
+
+[data-skin="paper"] .wordmark { font-weight: 400; font-size: 28px; }
+[data-skin="paper"] .stat .value { font-weight: 400; font-size: 30px; }
+[data-skin="paper"] button { font-weight: 400; font-size: 17px; }
+
+[data-skin="paper"] .frame { border-radius: 6px; box-shadow: 2px 3px 0 rgba(59, 47, 34, 0.3); }
+
+/* Stitching */
+[data-skin="paper"] .frame::before {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1.5px dashed rgba(59, 47, 34, 0.4);
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+[data-skin="paper"] .board { border-radius: 2px; }
+
+[data-skin="paper"] .face {
+  border-radius: 5px 8px 4px 7px;
+  rotate: var(--tilt, 0deg);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.14), transparent 45%), var(--tile);
+  --face-shadow: 1px 2px 0 rgba(59, 47, 34, 0.4);
+}
+
+[data-skin="paper"] .tile.marked .face { animation-name: wiggle; animation-duration: 260ms; }
+
+@keyframes wiggle {
+  from { transform: rotate(-5deg); }
+  to { transform: rotate(5deg); }
+}
+
+/* Confetti */
+[data-skin="paper"] .p {
+  width: 8px;
+  height: 6px;
+  border-radius: 1px;
+  animation-name: flutter;
+  animation-duration: 900ms;
+}
+
+@keyframes flutter {
+  55% { transform: translate(var(--dx), var(--dy)) rotate(var(--rot)); opacity: 1; }
+  to { transform: translate(var(--dx), calc(var(--dy) + 40px)) rotate(calc(var(--rot) * 3)); opacity: 0; }
+}
+
+/* ---- Cathedral: stained glass set in lead, lit from above ---- */
+
+body[data-skin="glass"] {
+  color-scheme: dark;
+  --ground: #15131f;
+  --well: #2a2730;
+  --well-edge: #4a4452;
+  --ink: #f4ead2;
+  --muted: #b9a98a;
+  --mark: #fff3c4;
+  --scrim: rgba(21, 19, 31, 0.9);
+  --red: #c8102e;
+  --yellow: #f2a900;
+  --green: #00875a;
+  --blue: #1f4fd1;
+  --purple: #7b2fbf;
+  --arrow-light: #1c1a22;
+  --arrow-dark: #1c1a22;
+  --display: "Cinzel", Georgia, serif;
+  background: radial-gradient(ellipse at 50% -10%, rgba(255, 214, 140, 0.25), transparent 60%), var(--ground);
+}
+
+[data-skin="glass"] .wordmark span { color: #d4b06a; }
+
+[data-skin="glass"] .frame {
+  border-radius: 10px;
+  background: #1c1a22;
+  box-shadow: 0 0 0 3px #3a3440, 0 0 0 5px #b08d57, 0 0 40px rgba(255, 214, 140, 0.15);
+}
+
+/* The dark board shows through the gaps between panes as lead. */
+[data-skin="glass"] .board { background: #1c1a22; border-radius: 6px; }
+[data-skin="glass"] .tile { padding: calc(var(--cell) * 0.045); }
+
+[data-skin="glass"] .face {
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px;
+  background: radial-gradient(
+    circle at 50% 38%,
+    color-mix(in srgb, var(--tile) 50%, white) 0%,
+    var(--tile) 55%,
+    color-mix(in srgb, var(--tile) 55%, black) 100%
+  );
+  --face-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25), inset 0 0 12px rgba(0, 0, 0, 0.35);
+}
+
+[data-skin="glass"] .face svg { filter: drop-shadow(0 1px 0 rgba(255, 255, 255, 0.35)); }
+
+/* A streak of light across the glass; it sweeps across marked panes. */
+[data-skin="glass"] .face::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(115deg, transparent 38%, rgba(255, 255, 255, 0.3) 48%, transparent 58%);
+}
+
+[data-skin="glass"] .tile.marked .face::after { animation: shine 700ms linear infinite; }
+
+@keyframes shine {
+  from { translate: -100% 0; }
+  to { translate: 100% 0; }
+}
+
+/* Shards */
+[data-skin="glass"] .p {
+  width: 10px;
+  height: 12px;
+  margin: -6px 0 0 -5px;
+  border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 75%);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.7), var(--tile) 60%);
+  animation-duration: 750ms;
+}
+
+/* ---- 8-Bit: chunky pixels, bevels and stepped motion ---- */
+
+body[data-skin="pixel"] {
+  color-scheme: dark;
+  --ground: #1d2b53;
+  --well: #000000;
+  --well-edge: #5f574f;
+  --ink: #fff1e8;
+  --muted: #c2c3c7;
+  --mark: #fff1e8;
+  --scrim: rgba(0, 0, 0, 0.85);
+  --red: #ff004d;
+  --yellow: #ffec27;
+  --green: #00e436;
+  --blue: #29adff;
+  --purple: #a45cff;
+  --arrow-light: #fff1e8;
+  --arrow-dark: #1d2b53;
+  --display: "Press Start 2P", ui-monospace, monospace;
+  background: repeating-conic-gradient(#1d2b53 0 25%, #22315e 0 50%) 0 0 / 16px 16px;
+}
+
+[data-skin="pixel"] .wordmark { font-size: 14px; font-weight: 400; }
+[data-skin="pixel"] .stat .value { font-size: 18px; font-weight: 400; margin-top: 4px; }
+[data-skin="pixel"] button { font-size: 10px; font-weight: 400; border-radius: 0; }
+[data-skin="pixel"] .toast { font-size: 13px; font-weight: 400; border-radius: 0; }
+[data-skin="pixel"] .over-score { font-size: 24px; font-weight: 400; }
+[data-skin="pixel"] .over-title { font-size: 11px; font-weight: 400; }
+
+[data-skin="pixel"] .frame,
+[data-skin="pixel"] .track { border-radius: 0; box-shadow: 0 0 0 4px #5f574f, 0 0 0 8px #000; }
+[data-skin="pixel"] .over,
+[data-skin="pixel"] .board,
+[data-skin="pixel"] .cursor { border-radius: 0; }
+
+[data-skin="pixel"] .tile { transition-timing-function: steps(4, end); }
+
+[data-skin="pixel"] .face {
+  border-radius: 0;
+  transition-timing-function: steps(3, end);
+  --face-shadow:
+    inset calc(var(--cell) * 0.07) calc(var(--cell) * 0.07) 0 rgba(255, 255, 255, 0.4),
+    inset calc(var(--cell) * -0.07) calc(var(--cell) * -0.07) 0 rgba(0, 0, 0, 0.4);
+}
+
+[data-skin="pixel"] .face svg { width: 58%; height: 58%; shape-rendering: crispEdges; }
+
+[data-skin="pixel"] .tile.marked .face { animation: blink 360ms steps(1, end) infinite; }
+
+@keyframes blink {
+  50% { filter: brightness(1.7); }
+}
+
+[data-skin="pixel"] .p {
+  border-radius: 0;
+  width: 7px;
+  height: 7px;
+  animation-timing-function: steps(6, end);
+}
