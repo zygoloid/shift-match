@@ -16,7 +16,10 @@ portrait but works on desktop too.
 - **A move is only allowed if it lines up at least one group of 3+.** Only
   tiles already on the board count; tiles that arrive are unknown until they
   do. Tapping any other tile shakes it. There is no move limit: the game ends
-  when no move is allowed.
+  when no move is allowed. A new game always starts with at least 3 legal
+  moves.
+- **Hint** highlights one legal move, picked at random. It can be used again
+  after the next move.
 - After every move, any run of 3+ same-colored tiles in a row or column is
   **marked** (outlined and pulsing). Marked tiles stay marked as they move.
 - Marked tiles clear by color, in order: red, yellow, green, blue, purple.
@@ -55,9 +58,9 @@ All lookahead players break ties by the number of legal moves left afterwards.
 
 | Player | Games that reached 2,000 moves | Median length of games that ended |
 | --- | --- | --- |
-| random (200 games) | 0 | 79 |
+| random (200 games) | 0 | 75 |
 | safe1 (40 games) | 5 | 523 |
-| safe2 | 7 | 600 |
+| safe2 | 8 | 626 |
 | safe3 | 6 | 650 |
 | peek1 | 40 | – |
 
@@ -72,7 +75,9 @@ indefinitely.
 | 7×7, no gray | 683 (42 of 200 reached 2,000) | – |
 | 7×7 + gray | 30 | 0 (median 354) |
 | 7 wide × 6 tall, no gray | 225 | 26 |
-| 6×6, no gray | 79 | 5 (median 523) |
+| 6×6, no gray | 79* | 5 (median 523) |
+
+\* Before starting boards were required to have 3 legal moves.
 
 7×7 without gray is too forgiving: random play often never dies. 7×7 with an
 inert gray tile also works, but gray tiles make the board harder to read.

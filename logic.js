@@ -33,6 +33,7 @@
   const RING = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
 
   const MIN_RUN = 3;
+  const MIN_START_MOVES = 3;
   const POINTS_PER_CELL = 10;
 
   // Stands in for a not-yet-known new tile when checking whether a move is
@@ -98,7 +99,7 @@
       }
       do {
         this.grid = this.createGrid();
-      } while (this.refreshLegal().size === 0);
+      } while (this.refreshLegal().size < MIN_START_MOVES);
     }
 
     newCell(color) {

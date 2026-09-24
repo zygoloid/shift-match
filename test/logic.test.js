@@ -17,11 +17,11 @@ function randomLegalTap(engine, rng) {
   return engine.tap(r, c);
 }
 
-test('new boards start without groups but with a legal move', () => {
+test('new boards start without groups but with at least three legal moves', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const engine = new Engine({ rng: mulberry32(seed) });
     assert.equal(findMatches(engine.grid).length, 0);
-    assert.ok(engine.legal.size > 0);
+    assert.ok(engine.legal.size >= 3);
   }
 });
 
