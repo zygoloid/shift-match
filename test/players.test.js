@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { Engine, mulberry32 } = require('../logic.js');
 const { makePlayer } = require('../tools/players.js');
 
-for (const spec of ['random', 'look2', 'look2x3', 'peek2']) {
+for (const spec of ['random', 'look2', 'look2x3', 'safe2', 'peek2']) {
   test(`${spec} picks a legal move without touching the game`, () => {
     const rng = mulberry32(11);
     const engine = new Engine({ rng });

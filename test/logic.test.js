@@ -233,6 +233,22 @@ test('a clone plays out independently, with the same tiles if given a cloned rng
   assert.equal(twin.score, engine.score);
 });
 
+test('an imagined game fills gaps with blanks that never match or move', () => {
+  const engine = engineWith([
+    [G, B, G],
+    [R, Y, Y],
+    [Y, B, R],
+    [B, G, B],
+  ]);
+  const imagined = engine.imagine();
+  imagined.tap(1, 0);
+  // Red pulled Y Y Y together; yellow clears and shifts down, and the three
+  // gaps it leaves at the top are filled with blanks.
+  assert.deepEqual(imagined.grid[0].map((cell) => cell.color), [-1, -1, -1]);
+  assert.equal(imagined.canTap(0, 0), false);
+  assert.equal(engine.moves, 0);
+});
+
 test('game ends when no move lines up a group', () => {
   const engine = engineWith([
     [R, Y, G],

@@ -2,7 +2,7 @@
 // out of legal moves.
 //
 //   node tools/simulate.js [--colors arrows|purple|all] [--games N] [--cap MOVES]
-//                          [--player random|lookN|lookNxS|peekN]
+//                          [--player random|lookN|lookNxS|safeN|peekN]
 //
 // See tools/players.js for what each player does.
 const { Engine, ARROWS, PURPLE, COLORS, mulberry32 } = require('../logic.js');

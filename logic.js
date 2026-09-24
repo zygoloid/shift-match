@@ -34,7 +34,7 @@
   const POINTS_PER_CELL = 10;
 
   // Stands in for a not-yet-known new tile when checking whether a move is
-  // legal. It never matches anything.
+  // legal, or in an imagined game. It never matches and can't be tapped.
   const UNKNOWN = { id: -1, color: -1 };
 
   // Small seeded PRNG so tests and simulations are reproducible. `clone()`
@@ -88,6 +88,7 @@
       this.score = 0;
       this.moves = 0;
       this.previewing = false;
+      this.unknownFill = false;
       if (board) {
         this.grid = board.map((row) => row.map((color) => this.newCell(color)));
         this.refreshLegal();
@@ -99,7 +100,7 @@
     }
 
     newCell(color) {
-      if (this.previewing) return UNKNOWN;
+      if (this.previewing || this.unknownFill) return UNKNOWN;
       if (color === undefined) color = Math.floor(this.rng() * this.colors.length);
       return { id: this.nextId++, color };
     }
@@ -125,7 +126,7 @@
     // the board. Tiles that would slide in are unknown, so they don't count.
     isLegal(r, c) {
       const color = this.colors[this.grid[r][c].color];
-      if (!color.dir && !color.rotate) return false;
+      if (!color || (!color.dir && !color.rotate)) return false;
       const saved = this.grid;
       this.grid = saved.map((row) => row.slice());
       this.previewing = true;
@@ -156,6 +157,14 @@
     // The game ends when no move lines up a group.
     get gameOver() {
       return this.legal.size === 0;
+    }
+
+    // A copy of the game in which every new tile is UNKNOWN: it shows what is
+    // certain to happen, without guessing which tiles will arrive.
+    imagine() {
+      const copy = this.clone();
+      copy.unknownFill = true;
+      return copy;
     }
 
     // An independent copy of the game that draws new tiles from `rng`.
