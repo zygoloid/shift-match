@@ -82,7 +82,9 @@
 
   class Engine {
     // `board` optionally gives the starting colors as rows of color indexes.
-    constructor({ rows = 6, cols = 6, colors = COLORS, rng = Math.random, board } = {}) {
+    // With `extinction`, a color whose last tile leaves the board never comes
+    // back, and emptying the board wins the game.
+    constructor({ rows = 6, cols = 6, colors = COLORS, rng = Math.random, board, extinction = true } = {}) {
       this.rows = board ? board.length : rows;
       this.cols = board ? board[0].length : cols;
       this.colors = colors;
@@ -92,20 +94,51 @@
       this.moves = 0;
       this.previewing = false;
       this.unknownFill = false;
+      this.extinction = extinction;
+      // Colors that new tiles can still be.
+      this.alive = colors.map((_, i) => i);
       if (board) {
         this.grid = board.map((row) => row.map((color) => this.newCell(color)));
+        if (extinction) this.alive = this.alive.filter((i) => this.colorsOnBoard().has(i));
         this.refreshLegal();
         return;
       }
       do {
         this.grid = this.createGrid();
-      } while (this.refreshLegal().size < MIN_START_MOVES);
+      } while (this.refreshLegal().size < MIN_START_MOVES || this.colorsOnBoard().size < colors.length);
     }
 
+    // Returns a new tile, or null if no color can appear any more.
     newCell(color) {
       if (this.previewing || this.unknownFill) return UNKNOWN;
-      if (color === undefined) color = Math.floor(this.rng() * this.colors.length);
+      if (color === undefined) {
+        if (!this.alive.length) return null;
+        color = this.alive[Math.floor(this.rng() * this.alive.length)];
+      }
       return { id: this.nextId++, color };
+    }
+
+    colorsOnBoard() {
+      const present = new Set();
+      for (const row of this.grid) for (const cell of row) if (cell) present.add(cell.color);
+      return present;
+    }
+
+    // Retires colors that have no tiles left, and returns them. Called after
+    // tiles leave the board and before gaps are filled. An imagined game with
+    // unknown tiles on the board can't tell, so it retires nothing.
+    retireColors() {
+      if (!this.extinction || this.previewing) return [];
+      const present = this.colorsOnBoard();
+      if (present.has(UNKNOWN.color)) return [];
+      const gone = this.alive.filter((i) => !present.has(i));
+      if (gone.length) this.alive = this.alive.filter((i) => present.has(i));
+      return gone;
+    }
+
+    // The board is empty: every color is gone.
+    get won() {
+      return this.extinction && this.alive.length === 0 && this.colorsOnBoard().size === 0;
     }
 
     // Fills the board so that no group exists at the start.
@@ -128,7 +161,8 @@
     // A move is legal if it lines up at least one group from tiles already on
     // the board. Tiles that would slide in are unknown, so they don't count.
     isLegal(r, c) {
-      const color = this.colors[this.grid[r][c].color];
+      const cell = this.grid[r][c];
+      const color = cell && this.colors[cell.color];
       if (!color || (!color.dir && !color.rotate)) return false;
       const saved = this.grid;
       this.grid = saved.map((row) => row.slice());
@@ -157,7 +191,8 @@
       return this.legal.has(r + ',' + c);
     }
 
-    // The game ends when no move lines up a group.
+    // The game ends when no move lines up a group (including when the board
+    // has been cleared).
     get gameOver() {
       return this.legal.size === 0;
     }
@@ -176,6 +211,7 @@
       copy.rng = rng;
       copy.grid = this.grid.map((row) => row.slice());
       copy.legal = new Set(this.legal);
+      copy.alive = this.alive.slice();
       return copy;
     }
 
@@ -210,7 +246,7 @@
           } else {
             const cell = this.newCell();
             this.grid[r][c] = cell;
-            spawned.push({ id: cell.id, fromR: r - gap * dr, fromC: c - gap * dc });
+            if (cell) spawned.push({ id: cell.id, fromR: r - gap * dr, fromC: c - gap * dc });
           }
         }
       }
@@ -225,7 +261,7 @@
           if (this.grid[r][c]) continue;
           const cell = this.newCell();
           this.grid[r][c] = cell;
-          spawned.push({ id: cell.id, appear: true });
+          if (cell) spawned.push({ id: cell.id, appear: true });
         }
       }
       return spawned;
@@ -248,15 +284,17 @@
         else lost.push({ id: cell.id, toR: r + dc, toC: c - dr });
       }
       for (const [cell, rr, cc] of landed) this.grid[rr][cc] = cell;
+      const extinct = this.retireColors();
       const spawned = [];
       for (const [dr, dc] of RING) {
         if (!onBoard(r + dr, c + dc) || this.grid[r + dr][c + dc]) continue;
         const cell = this.newCell();
+        if (!cell) continue;
         this.grid[r + dr][c + dc] = cell;
         // The tile landing at offset (dr, dc) started at (-dc, dr).
         spawned.push({ id: cell.id, fromR: r - dc, fromC: c + dr });
       }
-      return { spawned, lost };
+      return { spawned, lost, extinct };
     }
 
     // Applies the tapped tile's own action and returns the event for it.
@@ -266,7 +304,8 @@
         return { type: 'rotate', r, c, ...this.rotate(r, c) };
       }
       this.grid[r][c] = null;
-      return { type: 'shift', dir: color.dir, spawned: this.shift(color.dir) };
+      const extinct = this.retireColors();
+      return { type: 'shift', dir: color.dir, extinct, spawned: this.shift(color.dir) };
     }
 
     // Snapshot of every cell's position, for the renderer.
@@ -276,7 +315,7 @@
       for (let r = 0; r < this.rows; r++) {
         for (let c = 0; c < this.cols; c++) {
           const cell = this.grid[r][c];
-          cells.push({ id: cell.id, color: cell.color, r, c, ...from.get(cell.id) });
+          if (cell) cells.push({ id: cell.id, color: cell.color, r, c, ...from.get(cell.id) });
         }
       }
       return cells;
@@ -291,8 +330,8 @@
     }
 
     // Plays one move. Returns the events describing what happened, or null if
-    // the tap is not allowed.
-    tap(r, c) {
+    // the tap is not allowed. A turn on which a hint was shown scores half.
+    tap(r, c, { hinted = false } = {}) {
       if (this.gameOver || !this.canTap(r, c)) return null;
       const tapped = this.grid[r][c];
       const events = [];
@@ -300,8 +339,10 @@
       const move = this.applyMove(r, c);
       if (move.type === 'rotate') {
         events.push({ type: 'rotate', r, c, cells: this.layout(move.spawned), lost: move.lost });
+        if (move.extinct.length) events.push({ type: 'extinct', colors: move.extinct });
       } else {
         events.push({ type: 'remove', ids: [tapped.id] });
+        if (move.extinct.length) events.push({ type: 'extinct', colors: move.extinct });
         events.push({ type: 'shift', dir: move.dir, cells: this.layout(move.spawned) });
       }
       this.moves++;
@@ -321,12 +362,14 @@
           const group = [...marked.values()].filter((cell) => cell.color === colorIndex);
           if (!group.length) return;
           chain++;
-          const points = group.length * POINTS_PER_CELL * chain;
+          const points = Math.floor((group.length * POINTS_PER_CELL * chain) / (hinted ? 2 : 1));
           this.score += points;
           const ids = new Set(group.map((cell) => cell.id));
           for (const id of ids) marked.delete(id);
           this.removeCells(ids);
-          events.push({ type: 'clear', color: colorIndex, ids: [...ids], chain, points, score: this.score });
+          events.push({ type: 'clear', color: colorIndex, ids: [...ids], chain, points, hinted, score: this.score });
+          const extinct = this.retireColors();
+          if (extinct.length) events.push({ type: 'extinct', colors: extinct });
           if (color.dir) {
             events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir)) });
           } else {
@@ -343,6 +386,7 @@
         moves: this.moves,
         legalMoves: this.legal.size,
         chain,
+        won: this.won,
         gameOver: this.gameOver,
       });
       return events;

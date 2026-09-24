@@ -346,6 +346,13 @@ button:focus-visible {
   box-shadow: none;
 }
 
+.order li { transition: opacity 400ms ease, scale 400ms ease; }
+
+.order li.gone {
+  opacity: 0.15;
+  scale: 0.7;
+}
+
 .cursor {
   position: absolute;
   top: 6px;
