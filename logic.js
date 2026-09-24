@@ -13,17 +13,29 @@
   };
 
   // Array order is also the order in which marked groups are cleared.
-  const COLORS = [
+  // Arrow colors slide a line; `rotate` turns the eight neighbors clockwise.
+  // After a group clears, arrow colors shift the board their way to fill the
+  // gaps; colors without a direction refill the gaps in place.
+  const ARROWS = [
     { name: 'red', dir: 'up' },
     { name: 'yellow', dir: 'down' },
     { name: 'green', dir: 'left' },
     { name: 'blue', dir: 'right' },
   ];
+  const PURPLE = { name: 'purple', rotate: true };
+  const COLORS = [...ARROWS, PURPLE];
+
+  // Neighbour offsets in clockwise order, starting top-left.
+  const RING = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
 
   const MIN_RUN = 3;
   const POINTS_PER_CELL = 10;
 
-  // Small seeded PRNG so tests (and, later, daily puzzles) are reproducible.
+  // Stands in for a not-yet-known new tile when checking whether a move is
+  // legal. It never matches anything.
+  const UNKNOWN = { id: -1, color: -1 };
+
+  // Small seeded PRNG so tests and simulations are reproducible.
   function mulberry32(seed) {
     let a = seed >>> 0;
     return function () {
@@ -47,8 +59,8 @@
         for (let j = 1; j <= lineLength; j++) {
           const prev = at(i, j - 1);
           const cur = j < lineLength ? at(i, j) : null;
-          if (cur && prev && cur.color === prev.color) continue;
-          if (prev && j - start >= MIN_RUN) {
+          if (cur && prev && cur.color >= 0 && cur.color === prev.color) continue;
+          if (prev && prev.color >= 0 && j - start >= MIN_RUN) {
             for (let k = start; k < j; k++) found.add(at(i, k));
           }
           start = j;
@@ -61,18 +73,29 @@
   }
 
   class Engine {
-    constructor({ rows = 9, cols = 7, moves = 30, rng = Math.random } = {}) {
-      this.rows = rows;
-      this.cols = cols;
+    // `board` optionally gives the starting colors as rows of color indexes.
+    constructor({ rows = 9, cols = 7, moves = Infinity, colors = COLORS, rng = Math.random, board } = {}) {
+      this.rows = board ? board.length : rows;
+      this.cols = board ? board[0].length : cols;
+      this.colors = colors;
       this.rng = rng;
       this.nextId = 1;
       this.score = 0;
       this.movesLeft = moves;
-      this.grid = this.createGrid();
+      this.previewing = false;
+      if (board) {
+        this.grid = board.map((row) => row.map((color) => this.newCell(color)));
+        this.refreshLegal();
+        return;
+      }
+      do {
+        this.grid = this.createGrid();
+      } while (this.refreshLegal().size === 0);
     }
 
     newCell(color) {
-      if (color === undefined) color = Math.floor(this.rng() * COLORS.length);
+      if (this.previewing) return UNKNOWN;
+      if (color === undefined) color = Math.floor(this.rng() * this.colors.length);
       return { id: this.nextId++, color };
     }
 
@@ -86,15 +109,53 @@
           const banned = new Set();
           if (c >= 2 && row[c - 1].color === row[c - 2].color) banned.add(row[c - 1].color);
           if (r >= 2 && grid[r - 1][c].color === grid[r - 2][c].color) banned.add(grid[r - 1][c].color);
-          const allowed = COLORS.map((_, i) => i).filter((i) => !banned.has(i));
+          const allowed = this.colors.map((_, i) => i).filter((i) => !banned.has(i));
           row.push(this.newCell(allowed[Math.floor(this.rng() * allowed.length)]));
         }
       }
       return grid;
     }
 
-    get gameOver() {
+    // A move is legal if it lines up at least one group from tiles already on
+    // the board. Tiles that would slide in are unknown, so they don't count.
+    isLegal(r, c) {
+      const saved = this.grid;
+      this.grid = saved.map((row) => row.slice());
+      this.previewing = true;
+      try {
+        this.applyMove(r, c);
+        return findMatches(this.grid).length > 0;
+      } finally {
+        this.previewing = false;
+        this.grid = saved;
+      }
+    }
+
+    // Recomputes the set of legal taps, as "r,c" keys.
+    refreshLegal() {
+      this.legal = new Set();
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (this.isLegal(r, c)) this.legal.add(r + ',' + c);
+        }
+      }
+      return this.legal;
+    }
+
+    canTap(r, c) {
+      return this.legal.has(r + ',' + c);
+    }
+
+    get outOfMoves() {
       return this.movesLeft <= 0;
+    }
+
+    get stuck() {
+      return this.legal.size === 0;
+    }
+
+    get gameOver() {
+      return this.outOfMoves || this.stuck;
     }
 
     // Slides every line along `dir` to close gaps, then fills the space left
@@ -133,6 +194,43 @@
       return spawned;
     }
 
+    // Fills every gap with a new cell where it stands.
+    refill() {
+      const spawned = [];
+      for (let r = 0; r < this.rows; r++) {
+        for (let c = 0; c < this.cols; c++) {
+          if (this.grid[r][c]) continue;
+          const cell = this.newCell();
+          this.grid[r][c] = cell;
+          spawned.push({ id: cell.id, appear: true });
+        }
+      }
+      return spawned;
+    }
+
+    // Turns the tiles around (r, c) one step clockwise. At an edge, the tiles
+    // that exist move along the part of the ring that is on the board.
+    rotate(r, c) {
+      const ring = RING.map(([dr, dc]) => [r + dr, c + dc]).filter(
+        ([rr, cc]) => rr >= 0 && rr < this.rows && cc >= 0 && cc < this.cols
+      );
+      const cells = ring.map(([rr, cc]) => this.grid[rr][cc]);
+      ring.forEach(([rr, cc], i) => {
+        this.grid[rr][cc] = cells[(i - 1 + cells.length) % cells.length];
+      });
+    }
+
+    // Applies the tapped tile's own action and returns the event for it.
+    applyMove(r, c) {
+      const color = this.colors[this.grid[r][c].color];
+      if (color.rotate) {
+        this.rotate(r, c);
+        return { type: 'rotate', r, c };
+      }
+      this.grid[r][c] = null;
+      return { type: 'shift', dir: color.dir, spawned: this.shift(color.dir) };
+    }
+
     // Snapshot of every cell's position, for the renderer.
     layout(spawned = []) {
       const from = new Map(spawned.map((s) => [s.id, s]));
@@ -140,13 +238,7 @@
       for (let r = 0; r < this.rows; r++) {
         for (let c = 0; c < this.cols; c++) {
           const cell = this.grid[r][c];
-          const entry = { id: cell.id, color: cell.color, r, c };
-          const s = from.get(cell.id);
-          if (s) {
-            entry.fromR = s.fromR;
-            entry.fromC = s.fromC;
-          }
-          cells.push(entry);
+          cells.push({ id: cell.id, color: cell.color, r, c, ...from.get(cell.id) });
         }
       }
       return cells;
@@ -163,15 +255,17 @@
     // Plays one move. Returns the events describing what happened, or null if
     // the tap is not allowed.
     tap(r, c) {
-      if (this.gameOver) return null;
-      if (r < 0 || r >= this.rows || c < 0 || c >= this.cols) return null;
+      if (this.gameOver || !this.canTap(r, c)) return null;
       const tapped = this.grid[r][c];
-      const dir = COLORS[tapped.color].dir;
       const events = [];
 
-      this.grid[r][c] = null;
-      events.push({ type: 'remove', ids: [tapped.id] });
-      events.push({ type: 'shift', dir, cells: this.layout(this.shift(dir)) });
+      const move = this.applyMove(r, c);
+      if (move.type === 'rotate') {
+        events.push({ type: 'rotate', r, c, cells: this.layout() });
+      } else {
+        events.push({ type: 'remove', ids: [tapped.id] });
+        events.push({ type: 'shift', dir: move.dir, cells: this.layout(move.spawned) });
+      }
       this.movesLeft--;
 
       // Marked cells stay marked as they move, until their color's turn to clear.
@@ -185,7 +279,7 @@
       markNew();
       let chain = 0;
       while (marked.size) {
-        COLORS.forEach((color, colorIndex) => {
+        this.colors.forEach((color, colorIndex) => {
           const group = [...marked.values()].filter((cell) => cell.color === colorIndex);
           if (!group.length) return;
           chain++;
@@ -195,17 +289,29 @@
           for (const id of ids) marked.delete(id);
           this.removeCells(ids);
           events.push({ type: 'clear', color: colorIndex, ids: [...ids], chain, points, score: this.score });
-          events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir)) });
+          if (color.dir) {
+            events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir)) });
+          } else {
+            events.push({ type: 'refill', cells: this.layout(this.refill()) });
+          }
           markNew();
         });
       }
 
-      events.push({ type: 'end', score: this.score, movesLeft: this.movesLeft, chain, gameOver: this.gameOver });
+      this.refreshLegal();
+      events.push({
+        type: 'end',
+        score: this.score,
+        movesLeft: this.movesLeft,
+        legalMoves: this.legal.size,
+        chain,
+        gameOver: this.gameOver,
+      });
       return events;
     }
   }
 
-  const api = { COLORS, DIRS, Engine, findMatches, mulberry32 };
+  const api = { ARROWS, PURPLE, COLORS, DIRS, Engine, findMatches, mulberry32 };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.ShiftMatch = api;
 })(typeof window !== 'undefined' ? window : globalThis);

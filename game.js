@@ -25,6 +25,7 @@
     over: $('over'),
     finalScore: $('final-score'),
     overNote: $('over-note'),
+    overTitle: $('over-title'),
     order: $('order'),
   };
 
@@ -35,6 +36,10 @@
 
   const ARROW =
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5 21 11.5h-5.5V21h-7v-9.5H3z"/></svg>';
+  const TURN =
+    '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M12 5a7 7 0 1 1-7 7" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"/>' +
+    '<path fill="currentColor" d="M5 6 9.5 12.8h-9z"/></svg>';
 
   let engine;
   let tiles = new Map(); // cell id -> element
@@ -60,9 +65,11 @@
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+  const actionName = (color) => (color.rotate ? 'turn' : color.dir);
+
   function faceHtml(color) {
-    const { name, dir } = COLORS[color];
-    return `<div class="face c-${name} d-${dir}">${ARROW}</div>`;
+    const def = COLORS[color];
+    return `<div class="face c-${def.name} d-${actionName(def)}">${def.rotate ? TURN : ARROW}</div>`;
   }
 
   // ---- Tiles ----
@@ -78,19 +85,26 @@
     el.className = 'tile';
     el.innerHTML = faceHtml(entry.color);
     el.setAttribute('role', 'gridcell');
-    el.setAttribute('aria-label', `${COLORS[entry.color].name} ${COLORS[entry.color].dir}`);
+    el.setAttribute('aria-label', `${COLORS[entry.color].name} ${actionName(COLORS[entry.color])}`);
     tiles.set(entry.id, el);
     els.board.appendChild(el);
     return el;
   }
 
-  // Moves tiles to match a layout. New tiles slide in from their spawn point.
+  // Moves tiles to match a layout. New tiles slide in from their spawn point,
+  // or grow in place when they refill a gap.
   function sync(cells, animate) {
     const entering = [];
     for (const entry of cells) {
       let el = tiles.get(entry.id);
       if (!el) {
         el = makeTile(entry);
+        if (animate && entry.appear) {
+          el.classList.add('appearing');
+          place(el, entry.r, entry.c);
+          entering.push([el, entry]);
+          continue;
+        }
         if (animate && entry.fromR !== undefined) {
           el.style.transition = 'none';
           place(el, entry.fromR, entry.fromC);
@@ -104,6 +118,7 @@
       void els.board.offsetWidth; // commit spawn positions before animating
       for (const [el, entry] of entering) {
         el.style.transition = '';
+        el.classList.remove('appearing');
         place(el, entry.r, entry.c);
       }
     }
@@ -149,9 +164,9 @@
   function renderLegend() {
     els.order.innerHTML = COLORS.map(
       (color, i) =>
-        `<li data-color="${i}"><span class="num">${i + 1}</span>` +
-        `<span class="chip">${faceHtml(i)}</span>` +
-        `<span class="word">${color.dir}</span></li>`
+        `<li data-color="${i}"><span class="chip">${faceHtml(i)}</span>` +
+        `<span class="caption"><span class="num">${i + 1}</span>` +
+        `<span class="word">${actionName(color)}</span></span></li>`
     ).join('');
   }
 
@@ -177,6 +192,7 @@
   }
 
   function showGameOver() {
+    els.overTitle.textContent = engine.stuck ? 'No moves left' : 'Out of moves';
     const isBest = engine.score > best;
     if (isBest) {
       best = engine.score;
@@ -199,9 +215,19 @@
           dropTiles(ev.ids);
           break;
         case 'shift':
+        case 'refill':
           sync(ev.cells, true);
           await wait(T.shift);
           break;
+        case 'rotate': {
+          const centerId = ev.cells.find((e) => e.r === ev.r && e.c === ev.c).id;
+          const center = tiles.get(centerId);
+          center.classList.add('turning');
+          sync(ev.cells, true);
+          await wait(T.shift);
+          center.classList.remove('turning');
+          break;
+        }
         case 'mark':
           tagTiles(ev.ids, 'marked');
           await wait(T.mark);
@@ -223,13 +249,27 @@
     }
   }
 
+  // Shakes a tile whose move would not line up a group.
+  function refuse(r, c) {
+    const cellAt = engine.grid[r] && engine.grid[r][c];
+    const el = cellAt && tiles.get(cellAt.id);
+    if (!el) return;
+    el.classList.remove('refused');
+    void el.offsetWidth;
+    el.classList.add('refused');
+    el.addEventListener('animationend', () => el.classList.remove('refused'), { once: true });
+  }
+
   async function onTap(event) {
     if (busy || engine.gameOver) return;
     const rect = els.board.getBoundingClientRect();
     const r = Math.floor((event.clientY - rect.top) / cell);
     const c = Math.floor((event.clientX - rect.left) / cell);
     const events = engine.tap(r, c);
-    if (!events) return;
+    if (!events) {
+      refuse(r, c);
+      return;
+    }
     busy = true;
     els.moves.textContent = engine.movesLeft;
     try {
@@ -240,11 +280,11 @@
   }
 
   function start(state) {
-    engine = new Engine({ rows: ROWS, cols: COLS, moves: MOVES });
     if (state && state.grid) {
-      engine.grid = state.grid.map((row) => row.map((color) => engine.newCell(color)));
+      engine = new Engine({ board: state.grid, moves: state.movesLeft });
       engine.score = state.score;
-      engine.movesLeft = state.movesLeft;
+    } else {
+      engine = new Engine({ rows: ROWS, cols: COLS, moves: MOVES });
     }
     for (const el of tiles.values()) el.remove();
     tiles = new Map();

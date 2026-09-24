@@ -1,23 +1,26 @@
 // Run with: node --test
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { Engine, findMatches, mulberry32, COLORS } = require('../logic.js');
+const { Engine, findMatches, mulberry32 } = require('../logic.js');
 
-const R = 0, Y = 1, G = 2, B = 3;
+const R = 0, Y = 1, G = 2, B = 3, P = 4;
 
-// Builds an engine whose board is the given color layout.
-function engineWith(layout, seed = 1) {
-  const engine = new Engine({ rows: layout.length, cols: layout[0].length, rng: mulberry32(seed) });
-  engine.grid = layout.map((row) => row.map((color) => engine.newCell(color)));
-  return engine;
+const engineWith = (board, seed = 1) => new Engine({ board, rng: mulberry32(seed) });
+const colors = (engine) => engine.grid.map((row) => row.map((cell) => cell.color));
+const ids = (engine) => engine.grid.map((row) => row.map((cell) => cell.id));
+const sorted = (list) => [...list].sort((a, b) => a - b);
+
+function randomLegalTap(engine, rng) {
+  const options = [...engine.legal];
+  const [r, c] = options[Math.floor(rng() * options.length)].split(',').map(Number);
+  return engine.tap(r, c);
 }
 
-const colors = (engine) => engine.grid.map((row) => row.map((cell) => cell.color));
-
-test('new boards start without groups', () => {
+test('new boards start without groups but with a legal move', () => {
   for (let seed = 1; seed <= 50; seed++) {
     const engine = new Engine({ rng: mulberry32(seed) });
     assert.equal(findMatches(engine.grid).length, 0);
+    assert.ok(engine.legal.size > 0);
   }
 });
 
@@ -28,9 +31,9 @@ test('findMatches finds horizontal and vertical runs of three or more', () => {
     [G, B, G, B],
     [G, Y, B, Y],
   ]);
-  const found = findMatches(engine.grid).map((cell) => cell.id).sort((a, b) => a - b);
-  const idAt = (r, c) => engine.grid[r][c].id;
-  assert.deepEqual(found, [idAt(0, 0), idAt(0, 1), idAt(0, 2), idAt(1, 0), idAt(2, 0), idAt(3, 0)].sort((a, b) => a - b));
+  const at = ids(engine);
+  const found = findMatches(engine.grid).map((cell) => cell.id);
+  assert.deepEqual(sorted(found), sorted([at[0][0], at[0][1], at[0][2], at[1][0], at[2][0], at[3][0]]));
 });
 
 test('shift up closes the gap and spawns at the bottom', () => {
@@ -40,10 +43,10 @@ test('shift up closes the gap and spawns at the bottom', () => {
     [G, R],
     [B, Y],
   ]);
-  const ids = engine.grid.map((row) => row[0].id);
+  const before = ids(engine).map((row) => row[0]);
   engine.grid[1][0] = null;
   const spawned = engine.shift('up');
-  assert.deepEqual(engine.grid.slice(0, 3).map((row) => row[0].id), [ids[0], ids[2], ids[3]]);
+  assert.deepEqual(ids(engine).slice(0, 3).map((row) => row[0]), [before[0], before[2], before[3]]);
   assert.equal(spawned.length, 1);
   assert.equal(spawned[0].id, engine.grid[3][0].id);
   assert.deepEqual([spawned[0].fromR, spawned[0].fromC], [4, 0]);
@@ -52,31 +55,97 @@ test('shift up closes the gap and spawns at the bottom', () => {
 
 test('shift right with two gaps spawns two cells from the left edge', () => {
   const engine = engineWith([[R, Y, G, B, R]]);
-  const ids = engine.grid[0].map((cell) => cell.id);
+  const before = ids(engine)[0];
   engine.grid[0][1] = null;
   engine.grid[0][3] = null;
   const spawned = engine.shift('right');
   const row = engine.grid[0];
-  assert.deepEqual([row[2].id, row[3].id, row[4].id], [ids[0], ids[2], ids[4]]);
+  assert.deepEqual([row[2].id, row[3].id, row[4].id], [before[0], before[2], before[4]]);
   const from = new Map(spawned.map((s) => [s.id, s.fromC]));
   assert.equal(from.get(row[1].id), -1);
   assert.equal(from.get(row[0].id), -2);
 });
 
-test('tapping an arrow removes it and shifts its line that way', () => {
+test('an arrow move is only allowed if it lines up a group', () => {
   const engine = engineWith([
+    [G, B, G],
+    [R, Y, Y],
+    [Y, B, R],
     [B, G, B],
-    [Y, G, R],
-    [G, R, B],
   ]);
-  const topLeft = engine.grid[0][0].id;
-  // Yellow points down: the cell above slides down into the gap.
+  // Green at (0,0) would pull row 0 left into B G ?, which makes nothing.
+  assert.equal(engine.canTap(0, 0), false);
+  assert.equal(engine.tap(0, 0), null);
+  assert.equal(engine.movesLeft, Infinity);
+
+  // Red at (1,0) pulls the yellow below it up into Y Y Y.
+  const yellowIds = [engine.grid[2][0].id, engine.grid[1][1].id, engine.grid[1][2].id];
   const events = engine.tap(1, 0);
   assert.equal(events[0].type, 'remove');
-  assert.equal(events[1].type, 'shift');
-  assert.equal(events[1].dir, 'down');
-  assert.equal(engine.grid[1][0].id, topLeft);
-  assert.equal(engine.movesLeft, 29);
+  assert.deepEqual([events[1].type, events[1].dir], ['shift', 'up']);
+  const clear = events.find((e) => e.type === 'clear');
+  assert.equal(clear.color, Y);
+  assert.deepEqual(sorted(clear.ids), sorted(yellowIds));
+  assert.equal(events[events.indexOf(clear) + 1].dir, 'down');
+});
+
+test('new tiles do not count toward making a move legal', () => {
+  // Blue at (0,2) pulls row 0 right; only the unknown new tile could join
+  // the two reds, so the move is not allowed.
+  const engine = engineWith([
+    [R, R, B],
+    [Y, G, Y],
+    [G, Y, G],
+  ]);
+  assert.equal(engine.canTap(0, 2), false);
+});
+
+test('purple turns its neighbors clockwise without removing any', () => {
+  const engine = engineWith([
+    [R, R, G],
+    [R, P, B],
+    [Y, B, Y],
+  ]);
+  const before = ids(engine);
+  const events = engine.tap(1, 1);
+  assert.equal(events[0].type, 'rotate');
+  const placed = new Map(events[0].cells.map((e) => [e.id, [e.r, e.c]]));
+  assert.deepEqual(placed.get(before[1][0]), [0, 0]); // left -> top-left
+  assert.deepEqual(placed.get(before[0][0]), [0, 1]); // top-left -> top
+  assert.deepEqual(placed.get(before[0][2]), [1, 2]); // top-right -> right
+  assert.deepEqual(placed.get(before[2][0]), [1, 0]); // bottom-left -> left
+  assert.deepEqual(placed.get(before[1][1]), [1, 1]); // purple stays
+  const clear = events.find((e) => e.type === 'clear');
+  assert.equal(clear.color, R);
+  assert.equal(clear.ids.length, 3);
+});
+
+test('purple in a corner turns the three neighbors it has', () => {
+  const engine = engineWith([
+    [P, G, Y],
+    [R, B, G],
+    [G, Y, B],
+  ]);
+  engine.rotate(0, 0);
+  // Ring order (clockwise from the top): right (0,1), bottom-right (1,1), bottom (1,0).
+  assert.deepEqual(colors(engine), [
+    [P, R, Y],
+    [B, G, G],
+    [G, Y, B],
+  ]);
+});
+
+test('cleared purple groups refill in place', () => {
+  const engine = engineWith([
+    [P, P, P],
+    [R, Y, G],
+  ]);
+  const others = ids(engine)[1];
+  engine.grid[0] = [null, null, null];
+  const spawned = engine.refill();
+  assert.equal(spawned.length, 3);
+  assert.ok(spawned.every((s) => s.appear));
+  assert.deepEqual(ids(engine)[1], others);
 });
 
 test('marked groups clear in color order, each followed by its own shift', () => {
@@ -93,11 +162,11 @@ test('marked groups clear in color order, each followed by its own shift', () =>
   const blueIds = [2, 3, 4].map((r) => engine.grid[r][0].id);
   const events = engine.tap(1, 2);
   const marks = events.filter((e) => e.type === 'mark');
-  assert.deepEqual([...marks[0].ids].sort(), [...redIds, ...blueIds].sort());
+  assert.deepEqual(sorted(marks[0].ids), sorted([...redIds, ...blueIds]));
 
   const clears = events.filter((e) => e.type === 'clear');
   assert.equal(clears[0].color, R);
-  assert.deepEqual([...clears[0].ids].sort(), [...redIds].sort());
+  assert.deepEqual(sorted(clears[0].ids), sorted(redIds));
   assert.equal(events[events.indexOf(clears[0]) + 1].dir, 'up');
 
   // The blues moved up when the reds cleared but stayed marked.
@@ -105,29 +174,44 @@ test('marked groups clear in color order, each followed by its own shift', () =>
   for (const id of blueIds) assert.ok(clears[blueIndex].ids.includes(id));
   assert.equal(events[events.indexOf(clears[blueIndex]) + 1].dir, 'right');
 
-  // Everything up to that blue clear happened in one red→yellow→green→blue pass.
+  // Everything up to that blue clear happened in one pass through the colors.
   const firstPass = clears.slice(0, blueIndex + 1).map((e) => e.color);
   firstPass.slice(1).forEach((color, i) => assert.ok(color > firstPass[i]));
   assert.equal(findMatches(engine.grid).length, 0);
 });
 
-test('chain multiplier grows with each clear', () => {
-  for (let seed = 1; seed <= 200; seed++) {
-    const engine = new Engine({ rng: mulberry32(seed) });
-    const events = engine.tap(4, 3);
-    const clears = events.filter((e) => e.type === 'clear');
-    clears.forEach((e, i) => {
-      assert.equal(e.chain, i + 1);
-      assert.equal(e.points, e.ids.length * 10 * e.chain);
-    });
-    assert.equal(findMatches(engine.grid).length, 0);
+test('every legal move clears something and the chain multiplier grows', () => {
+  for (let seed = 1; seed <= 100; seed++) {
+    const rng = mulberry32(seed);
+    const engine = new Engine({ rng });
+    for (let move = 0; move < 5 && !engine.gameOver; move++) {
+      const clears = randomLegalTap(engine, rng).filter((e) => e.type === 'clear');
+      assert.ok(clears.length > 0);
+      clears.forEach((e, i) => {
+        assert.equal(e.chain, i + 1);
+        assert.equal(e.points, e.ids.length * 10 * e.chain);
+      });
+      assert.equal(findMatches(engine.grid).length, 0);
+    }
   }
 });
 
 test('game ends when moves run out', () => {
-  const engine = new Engine({ moves: 2, rng: mulberry32(7) });
-  engine.tap(0, 0);
-  const last = engine.tap(0, 0);
+  const rng = mulberry32(7);
+  const engine = new Engine({ moves: 2, rng });
+  randomLegalTap(engine, rng);
+  const last = randomLegalTap(engine, rng);
   assert.equal(last.at(-1).gameOver, true);
+  assert.equal(engine.outOfMoves, true);
+});
+
+test('game ends when no move lines up a group', () => {
+  const engine = engineWith([
+    [R, Y, G],
+    [B, P, R],
+    [Y, G, B],
+  ]);
+  assert.equal(engine.legal.size, 0);
+  assert.equal(engine.gameOver, true);
   assert.equal(engine.tap(0, 0), null);
 });
