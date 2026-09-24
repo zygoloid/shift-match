@@ -18,8 +18,12 @@ portrait but works on desktop too.
   do. Tapping any other tile shakes it. There is no move limit: the game ends
   when no move is allowed. A new game always starts with at least 3 legal
   moves.
+- **Colors can die out.** When the last tile of a color leaves the board, that
+  color never comes back; its chip fades on the track. **Emptying the board
+  wins.** In practice, once only one color is left, every refill is that
+  color, so the whole board matches and clears.
 - **Hint** highlights one legal move, picked at random. It can be used again
-  after the next move.
+  after the next move. The turn you take after a hint scores half.
 - After every move, any run of 3+ same-colored tiles in a row or column is
   **marked** (outlined and pulsing). Marked tiles stay marked as they move.
 - Marked tiles clear by color, in order: red, yellow, green, blue, purple.
@@ -32,13 +36,32 @@ portrait but works on desktop too.
   through every clear triggered by one tap.
 - Best score is kept in `localStorage`.
 
+## How often is a game won?
+
+With extinction on (the game's rules), 5,000-move cap:
+
+| Player | Won | Lost | Still going at 5,000 | Moves to win (median) |
+| --- | --- | --- | --- | --- |
+| random (200 games) | 5 (2.5%) | 194 | 1 | 1,410 |
+| safe1 (40 games) | 7 (18%) | 18 | 15 | 2,092 |
+| safe2 | 10 (25%) | 13 | 17 | 3,984 |
+| safe3 | 8 (20%) | 13 | 19 | 3,169 |
+| peek1 | 21 (53%) | 0 | 19 | 2,195 |
+
+None of these players try to win; they only try to survive. Wins take
+thousands of moves because the first color rarely dies out by accident: of
+the lost games, almost all still had all five colors. Run with
+`--extinction off` for the rules without a win.
+
 ## How long does a game last?
+
+The tables below are from before the win condition (`--extinction off`).
 
 `tools/simulate.js` plays many games with a chosen move picker, with no move
 limit and a cap of 2,000 moves per game:
 
     node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
-                           [--games N] [--cap MOVES]
+                           [--extinction on|off] [--games N] [--cap MOVES]
                            [--player random|lookN|lookNxS|safeN|peekN]
 
 The players (in `tools/players.js`):
