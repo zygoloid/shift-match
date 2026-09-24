@@ -19,7 +19,9 @@ portrait but works on desktop too.
   when no move is allowed. A new game always starts with at least 3 legal
   moves.
 - **Colors can die out.** When the last tile of a color leaves the board, that
-  color never comes back; its chip fades on the track. **Emptying the board
+  color never comes back; its chip fades on the track. The tiles that fill
+  the gaps left by a cleared group are never that group's color (while at
+  least three colors survive). **Emptying the board
   wins.** In practice, once only one color is left, every refill is that
   color, so the whole board matches and clears.
 - **Hint** highlights one legal move, picked at random. It can be used again
@@ -42,7 +44,8 @@ portrait but works on desktop too.
 `tools/players.js`), in parallel:
 
     node tools/simulate.js [--colors arrows|purple|gray] [--rows R] [--cols C]
-                           [--extinction on|off] [--games N] [--cap MOVES]
+                           [--extinction on|off] [--exclude on|off]
+                           [--games N] [--cap MOVES]
                            [--player random|lookN|lookNxS|safeN|huntN]
 
 - **random** taps any legal move.
@@ -60,7 +63,21 @@ Remaining ties go to the move that leaves the most legal moves.
 
 ### How often is a game won?
 
-With extinction on (the game's rules), 5,000-move cap:
+With extinction on and tiles filling a cleared group's gaps never being that
+group's color (the game's rules), 5,000-move cap:
+
+| Player | Won | Lost | Moves to win (median) | 1st / 2nd color gone (median move) |
+| --- | --- | --- | --- | --- |
+| random (200 games) | 33 (16.5%) | 167 | 1,011 | 70 / 1,008 |
+| safe1 (40 games) | 34 (85%) | 6 | 1,265 | 219 / 1,248 |
+| hunt1 (200 games) | 188 (94%) | 12 | 256 | 53 / 244 |
+| hunt2 (40 games) | 39 (98%) | 1 | 292 | 70 / 266 |
+
+No game reached the cap. Once two colors are gone, the rest usually go
+within a few moves: the fills after each clear come from the other colors,
+so the survivors line up quickly.
+
+Before that fill rule (`--exclude off`):
 
 | Player | Won | Lost | Still going at 5,000 | Moves to win (median) |
 | --- | --- | --- | --- | --- |
@@ -72,13 +89,9 @@ With extinction on (the game's rules), 5,000-move cap:
 | hunt2 (40 games) | 36 (90%) | 2 | 2 | 1,336 |
 | hunt3 | 30 (75%) | 4 | 6 | 1,423 |
 
-The safe players only try to survive, and rarely wipe out a color by
-accident. Hunting wins most games, but slowly. For hunt1, the median game
-loses its first color at move 63, its second at move 315, and its third at
-move 1,360 (hunt2: 87, 338, 1,334). The third, fourth and fifth colors go on
-the same move: with two colors left, the board is full of matches and a
-single cascade clears everything. So winning means eliminating three colors,
-and the stage with three colors left takes most of the game.
+Without it, the stage with three colors left took about 1,000 moves (hunt1:
+colors gone at moves 63, 315 and 1,360; the third, fourth and fifth went on
+the same move, since two colors fill the board with matches).
 
 ### How long does a game last without the win condition?
 
