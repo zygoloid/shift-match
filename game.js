@@ -5,7 +5,6 @@
   const { Engine, COLORS } = window.ShiftMatch;
   const ROWS = 9;
   const COLS = 7;
-  const MOVES = 30;
   const MAX_CELL = 68;
   const BEST_KEY = 'shift-match-best';
 
@@ -25,7 +24,6 @@
     over: $('over'),
     finalScore: $('final-score'),
     overNote: $('over-note'),
-    overTitle: $('over-title'),
     order: $('order'),
   };
 
@@ -180,8 +178,7 @@
 
   function updateHud() {
     els.score.textContent = engine.score;
-    els.moves.textContent = engine.movesLeft;
-    els.moves.classList.toggle('low', engine.movesLeft <= 5);
+    els.moves.textContent = engine.moves;
     els.best.textContent = best;
   }
 
@@ -194,7 +191,6 @@
   }
 
   function showGameOver() {
-    els.overTitle.textContent = engine.stuck ? 'No moves left' : 'Out of moves';
     const isBest = engine.score > best;
     if (isBest) {
       best = engine.score;
@@ -202,7 +198,8 @@
     }
     updateHud();
     els.finalScore.textContent = engine.score;
-    els.overNote.textContent = isBest ? 'New best score' : `Best: ${best}`;
+    const played = `${engine.moves} ${engine.moves === 1 ? 'move' : 'moves'}`;
+    els.overNote.textContent = isBest ? `${played} · New best score` : `${played} · Best: ${best}`;
     els.over.hidden = false;
   }
 
@@ -273,7 +270,7 @@
       return;
     }
     busy = true;
-    els.moves.textContent = engine.movesLeft;
+    els.moves.textContent = engine.moves;
     try {
       await play(events);
     } finally {
@@ -283,10 +280,11 @@
 
   function start(state) {
     if (state && state.grid) {
-      engine = new Engine({ board: state.grid, moves: state.movesLeft });
+      engine = new Engine({ board: state.grid });
       engine.score = state.score;
+      engine.moves = state.moves || 0;
     } else {
-      engine = new Engine({ rows: ROWS, cols: COLS, moves: MOVES });
+      engine = new Engine({ rows: ROWS, cols: COLS });
     }
     for (const el of tiles.values()) el.remove();
     tiles = new Map();
@@ -312,7 +310,7 @@
     hot.snapshot(() => ({
       grid: engine.grid.map((row) => row.map((c) => c.color)),
       score: engine.score,
-      movesLeft: engine.movesLeft,
+      moves: engine.moves,
     }));
   }
   if (hot && hot.ready) hot.ready(start);

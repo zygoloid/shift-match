@@ -14,8 +14,8 @@ A match-3 puzzle where every tile is an arrow. Open `index.html` in a browser
   an edge or corner). Nothing is removed.
 - **A move is only allowed if it lines up at least one group of 3+.** Only
   tiles already on the board count; the tile that slides in is unknown until
-  it arrives. Tapping any other tile shakes it. The game ends when no move is
-  allowed, or when the 30 taps are used up.
+  it arrives. Tapping any other tile shakes it. There is no move limit: the
+  game ends when no move is allowed.
 - After every move, any run of 3+ same-colored tiles in a row or column is
   **marked** (outlined and pulsing). Marked tiles stay marked as they move.
 - Marked tiles clear by color, in order: red, yellow, green, blue, purple,
@@ -47,9 +47,12 @@ within 30 moves.
 ## Code
 
 - `logic.js` — the rules engine (no DOM). `Engine.tap(r, c)` returns a list
-  of events (`remove`, `shift`, `mark`, `clear`, `end`) that describe the
-  whole cascade.
+  of events (`remove`, `shift`, `rotate`, `mark`, `clear`, `refill`, `end`)
+  that describe the whole cascade. `Engine.clone()` copies a game for
+  lookahead.
 - `game.js` — renders the board and replays those events with animations.
 - `style.css` — layout and theme (follows the system light/dark setting).
-- `test/logic.test.js` — engine tests: `node --test`.
-- `tools/simulate.js` — random-play simulation (see above).
+- `test/` — engine and player tests: `node --test`.
+- `tools/simulate.js` — plays many games in parallel and reports how long
+  they last (see above).
+- `tools/players.js` — the random and lookahead move pickers.

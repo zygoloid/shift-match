@@ -1,43 +1,83 @@
-// Plays games with uniformly random legal taps and no move limit, to see how
-// often a board runs out of legal moves.
+// Plays whole games with a chosen move picker to see how often the board runs
+// out of legal moves.
 //
-//   node tools/simulate.js [arrows|purple|all] [games] [moveCap]
+//   node tools/simulate.js [--colors arrows|purple|all] [--games N] [--cap MOVES]
+//                          [--player random|lookN|lookNxS|peekN]
+//
+// See tools/players.js for what each player does.
 const { Engine, ARROWS, PURPLE, COLORS, mulberry32 } = require('../logic.js');
+const os = require('node:os');
+const { Worker, isMainThread, parentPort, workerData } = require('node:worker_threads');
+const { makePlayer } = require('./players.js');
+
+const args = { colors: 'all', games: 200, cap: 2000, player: 'random' };
+for (let i = 2; i < process.argv.length; i += 2) {
+  const key = process.argv[i].replace(/^--/, '');
+  if (!(key in args)) throw new Error(`Unknown option ${process.argv[i]}`);
+  args[key] = typeof args[key] === 'number' ? Number(process.argv[i + 1]) : process.argv[i + 1];
+}
 
 const PALETTES = { arrows: ARROWS, purple: [...ARROWS, PURPLE], all: COLORS };
-const palette = PALETTES[process.argv[2] || 'all'];
-const games = Number(process.argv[3]) || 200;
-const cap = Number(process.argv[4]) || 2000;
+const palette = PALETTES[args.colors];
 
-const lengths = [];
-let capped = 0;
-let legalTotal = 0;
-let turns = 0;
-let minLegal = Infinity;
-for (let seed = 1; seed <= games; seed++) {
-  const rng = mulberry32(seed);
-  const engine = new Engine({ colors: palette, rng });
-  let moves = 0;
-  while (!engine.stuck && moves < cap) {
-    legalTotal += engine.legal.size;
-    minLegal = Math.min(minLegal, engine.legal.size);
-    turns++;
-    const options = [...engine.legal];
-    const [r, c] = options[Math.floor(rng() * options.length)].split(',').map(Number);
-    engine.tap(r, c);
-    moves++;
+// Plays the games whose seeds are in [first, last].
+function playGames(first, last) {
+  const result = { lengths: [], capped: 0, legalTotal: 0, turns: 0, minLegal: Infinity };
+  for (let seed = first; seed <= last; seed++) {
+    const engine = new Engine({ colors: palette, rng: mulberry32(seed) });
+    const player = makePlayer(args.player, seed + 1e6);
+    while (!engine.gameOver && engine.moves < args.cap) {
+      result.legalTotal += engine.legal.size;
+      result.minLegal = Math.min(result.minLegal, engine.legal.size);
+      result.turns++;
+      const [r, c] = player.choose(engine);
+      engine.tap(r, c);
+    }
+    if (engine.gameOver) result.lengths.push(engine.moves);
+    else result.capped++;
   }
-  if (engine.stuck) lengths.push(moves);
-  else capped++;
+  return result;
 }
 
-lengths.sort((a, b) => a - b);
-const pct = (p) => lengths[Math.min(lengths.length - 1, Math.floor(p * lengths.length))];
-console.log(`palette: ${palette.map((c) => c.name).join(', ')}`);
-console.log(`games: ${games}, cap: ${cap} moves`);
-console.log(`ended (no legal moves): ${lengths.length}, still going at cap: ${capped}`);
-if (lengths.length) {
-  const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
-  console.log(`game length of ended games: min ${lengths[0]}, p10 ${pct(0.1)}, median ${pct(0.5)}, mean ${mean.toFixed(1)}, p90 ${pct(0.9)}, max ${lengths.at(-1)}`);
+if (!isMainThread) {
+  parentPort.postMessage(playGames(workerData.first, workerData.last));
+} else {
+  main();
 }
-console.log(`legal moves per turn: mean ${(legalTotal / turns).toFixed(1)}, min seen ${minLegal}`);
+
+async function main() {
+  const started = Date.now();
+  const shards = Math.min(os.availableParallelism(), args.games);
+  const jobs = [];
+  for (let i = 0; i < shards; i++) {
+    const first = 1 + Math.floor((i * args.games) / shards);
+    const last = Math.floor(((i + 1) * args.games) / shards);
+    jobs.push(
+      new Promise((resolve, reject) => {
+        const worker = new Worker(__filename, { argv: process.argv.slice(2), workerData: { first, last } });
+        worker.once('message', resolve);
+        worker.once('error', reject);
+      })
+    );
+  }
+  const results = await Promise.all(jobs);
+  const lengths = results.flatMap((r) => r.lengths);
+  const capped = results.reduce((n, r) => n + r.capped, 0);
+  const legalTotal = results.reduce((n, r) => n + r.legalTotal, 0);
+  const turns = results.reduce((n, r) => n + r.turns, 0);
+  const minLegal = Math.min(...results.map((r) => r.minLegal));
+
+  lengths.sort((a, b) => a - b);
+  const pct = (p) => lengths[Math.min(lengths.length - 1, Math.floor(p * lengths.length))];
+  console.log(`colors: ${palette.map((c) => c.name).join(', ')}; player: ${args.player}`);
+  console.log(`games: ${args.games}, cap: ${args.cap} moves, ${((Date.now() - started) / 1000).toFixed(1)}s`);
+  console.log(`ended (no legal moves): ${lengths.length}, still going at cap: ${capped}`);
+  if (lengths.length) {
+    const mean = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+    console.log(
+      `length of ended games: min ${lengths[0]}, p10 ${pct(0.1)}, median ${pct(0.5)}, ` +
+        `mean ${mean.toFixed(1)}, p90 ${pct(0.9)}, max ${lengths.at(-1)}`
+    );
+  }
+  console.log(`legal moves per turn: mean ${(legalTotal / turns).toFixed(1)}, min seen ${minLegal}`);
+}

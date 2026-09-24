@@ -144,8 +144,6 @@ button:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.stat .value.low { color: var(--red); }
-
 /* Board */
 
 .board-wrap {
