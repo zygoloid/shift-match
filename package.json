@@ -1,0 +1,7 @@
+{
+  "name": "shift-match",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  }
+}
