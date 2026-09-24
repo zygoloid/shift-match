@@ -27,6 +27,7 @@
     overNote: $('over-note'),
     order: $('order'),
     cursor: $('cursor'),
+    hint: $('hint'),
     track: $('track'),
   };
 
@@ -288,6 +289,27 @@
     el.addEventListener('animationend', () => el.classList.remove('refused'), { once: true });
   }
 
+  // ---- Hints ----
+
+  let hintedId = null;
+
+  // Highlights one legal move, picked at random. The button stays disabled
+  // until a move is made.
+  function showHint() {
+    if (busy || engine.gameOver || hintedId !== null) return;
+    const moves = [...engine.legal];
+    const [r, c] = moves[Math.floor(Math.random() * moves.length)].split(',').map(Number);
+    hintedId = engine.grid[r][c].id;
+    tiles.get(hintedId).classList.add('hinted');
+    els.hint.disabled = true;
+  }
+
+  function clearHint() {
+    const el = hintedId !== null && tiles.get(hintedId);
+    if (el) el.classList.remove('hinted');
+    hintedId = null;
+  }
+
   async function onTap(event) {
     if (busy || engine.gameOver) return;
     const rect = els.board.getBoundingClientRect();
@@ -299,11 +321,14 @@
       return;
     }
     busy = true;
+    clearHint();
+    els.hint.disabled = true;
     els.moves.textContent = engine.moves;
     try {
       await play(events);
     } finally {
       busy = false;
+      els.hint.disabled = engine.gameOver;
     }
   }
 
@@ -318,6 +343,8 @@
     for (const el of tiles.values()) el.remove();
     tiles = new Map();
     busy = false;
+    hintedId = null;
+    els.hint.disabled = engine.gameOver;
     els.over.hidden = true;
     hideCursor();
     resize();
@@ -329,6 +356,7 @@
   renderLegend();
   els.board.addEventListener('click', onTap);
   $('new-game').addEventListener('click', () => start());
+  els.hint.addEventListener('click', showHint);
   $('play-again').addEventListener('click', () => start());
   if (window.ResizeObserver) new ResizeObserver(resize).observe(els.wrap);
   else window.addEventListener('resize', resize);
