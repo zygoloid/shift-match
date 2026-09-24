@@ -19,24 +19,30 @@ class RandomPlayer {
 // Looks `depth` moves ahead (the move being chosen counts as the first) and
 // prefers moves after which the game can keep going that long.
 //
-// New tiles are random, so the player can't know what will arrive. By default
-// it plays each candidate move out against `samples` imagined futures, drawing
-// tiles from its own generator, and scores the move by how many of those
-// futures it survives. With `peek`, it copies the game's own generator and so
-// sees exactly which tiles will come: a player who could see the tile queue.
+// New tiles are random, so the player can't know what will arrive. `mode`
+// says how it deals with that:
+// - 'sample': plays each candidate move out against `samples` imagined
+//   futures, drawing tiles from its own generator, and scores the move by how
+//   many of those futures it survives.
+// - 'safe': treats every new tile as a blank that never matches and can't be
+//   tapped, so it only counts on tiles already on the board. A line it finds
+//   can still fail if new tiles set off a cascade that moves things.
+// - 'peek': copies the game's own generator, so it sees exactly which tiles
+//   will come: a player who could see the tile queue.
 //
 // Ties go to the move that leaves the most legal moves afterwards.
 class LookaheadPlayer {
-  constructor({ depth = 2, samples = 1, peek = false, seed = 1 } = {}) {
+  constructor({ depth = 2, samples = 1, mode = 'sample', seed = 1 } = {}) {
     this.depth = depth;
-    this.samples = peek ? 1 : samples;
-    this.peek = peek;
+    this.samples = mode === 'sample' ? samples : 1;
+    this.mode = mode;
     this.rng = mulberry32(seed);
   }
 
   fork(engine) {
-    const rng = this.peek ? engine.rng.clone() : mulberry32(Math.floor(this.rng() * 2 ** 32));
-    return engine.clone(rng);
+    if (this.mode === 'safe') return engine.unknownFill ? engine.clone() : engine.imagine();
+    if (this.mode === 'peek') return engine.clone(engine.rng.clone());
+    return engine.clone(mulberry32(Math.floor(this.rng() * 2 ** 32)));
   }
 
   choose(engine) {
@@ -76,15 +82,15 @@ class LookaheadPlayer {
 }
 
 // Parses "random", "look3", "look3x4" (3 moves ahead, 4 sampled futures per
-// candidate) or "peek3".
+// candidate), "safe3" or "peek3".
 function makePlayer(spec, seed) {
   if (spec === 'random') return new RandomPlayer({ seed });
-  const m = /^(look|peek)(\d+)(?:x(\d+))?$/.exec(spec);
+  const m = /^(look|safe|peek)(\d+)(?:x(\d+))?$/.exec(spec);
   if (!m) throw new Error(`Unknown player "${spec}"`);
   return new LookaheadPlayer({
     depth: Number(m[2]),
     samples: m[3] ? Number(m[3]) : 1,
-    peek: m[1] === 'peek',
+    mode: { look: 'sample', safe: 'safe', peek: 'peek' }[m[1]],
     seed,
   });
 }
