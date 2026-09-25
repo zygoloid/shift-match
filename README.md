@@ -38,6 +38,48 @@ portrait but works on desktop too.
   through every clear triggered by one tap.
 - Best score is kept in `localStorage`.
 
+## Puzzle mode
+
+The **Puzzles** tab has 50 numbered puzzles. No new tiles ever appear: taps
+and turns leave gaps, and the goal is to clear the whole board. Every move
+must still line up a group, so you lose when tiles remain and no move does.
+Undo and Restart are next to Hint, and Hint runs a solver to show a move
+from which the board can still be cleared (or says there is none). Solved
+puzzles get a check mark, and your place in the pack is remembered.
+
+The puzzles grow from 12 tiles to a full 6×6 board:
+
+| Puzzles | Tiles | Solution | Random play clears it | Opening moves that can still win |
+| --- | --- | --- | --- | --- |
+| 1–5 | 12 | 2–3 moves | 49–100% | 2–3 of 2–4 |
+| 6–10 | 18 | 4 moves | 0–14% | 1–2 of 3–8 |
+| 11–20 | 24 | 5 moves | 0–3% | 1–3 of 7–14 |
+| 21–30 | 30 | 6–7 moves | 0–1% | 1–7 of 5–15 |
+| 31–50 | 36 | 8–9 moves | never (300 tries each) | 1–5 of 11–23 |
+
+### How puzzles are built
+
+`puzzles.js` works backwards from an empty board. Each step invents the
+position one move earlier: it puts back a group that the move cleared (and
+undoes the slide that closed its gaps), then puts back the tapped arrow or
+turns a purple's square back. The candidate is then played forwards with the
+real rules, and kept only if it produces the later board exactly. So every
+puzzle comes with a solution, and the pack test replays each one.
+
+A random walk backwards gets stuck by about 24 tiles, because after an arrow
+group clears, every line it touched ends up packed against one edge, and
+only lines like that can take a group back. The builder therefore keeps a
+beam of the positions with the most packed lines that still have room, and
+penalizes stranded holes (empty cells in the middle of lines, which no step
+back can refill). With that, a full board takes about 1.5 seconds.
+
+`node tools/make-puzzles.js` rebuilds `puzzle-pack.js`, ordering each size
+from easiest to hardest by random-play clear rate and by the share of
+opening moves that can still win.
+
+In both modes, a slide only moves the lines that just gained a gap. (In
+endless mode only those lines ever have gaps, so this changes nothing there.)
+
 ## Sound and themes
 
 All sound is synthesized with Web Audio in `audio.js`; there are no sound
@@ -164,6 +206,9 @@ Earlier findings on 7×9 (when purple turned its ring one step):
   setting).
 - `themes.css`: the other five themes.
 - `audio.js`: synthesized sound effects.
+- `puzzles.js`: puzzle building (backwards from an empty board) and the
+  solver behind puzzle hints.
+- `puzzle-pack.js`: the 50 built puzzles, made by `tools/make-puzzles.js`.
 - `test/`: engine and player tests; run with `node --test`.
 - `tools/simulate.js`: plays many games in parallel and reports how long
   they last.

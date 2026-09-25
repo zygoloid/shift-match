@@ -32,6 +32,10 @@
   // Offsets of the eight neighbors.
   const RING = [[-1, -1], [-1, 0], [-1, 1], [0, 1], [1, 1], [1, 0], [1, -1], [0, -1]];
 
+  // Which line a cell is in, for a shift in `dir`: its column for up/down,
+  // its row for left/right.
+  const lineIndex = (dir, r, c) => (DIRS[dir].dr !== 0 ? c : r);
+
   const MIN_RUN = 3;
   const MIN_START_MOVES = 3;
   const POINTS_PER_CELL = 10;
@@ -81,8 +85,9 @@
   }
 
   class Engine {
-    // `board` optionally gives the starting colors as rows of color indexes.
-    // With `extinction`, a color whose last tile leaves the board never comes
+    // `board` optionally gives the starting colors as rows of color indexes
+    // (null or -1 for an empty cell). Without `refill` (puzzle mode), no new
+    // tiles ever appear, and emptying the board wins. With `extinction`, a color whose last tile leaves the board never comes
     // back, and emptying the board wins the game. With `excludeCleared`, the
     // tiles that fill the gaps left by a cleared group are never that group's
     // color, as long as at least two other colors remain. (With only one
@@ -96,6 +101,7 @@
       board,
       extinction = true,
       excludeCleared = true,
+      refill = true,
     } = {}) {
       this.rows = board ? board.length : rows;
       this.cols = board ? board[0].length : cols;
@@ -108,12 +114,13 @@
       this.unknownFill = false;
       this.extinction = extinction;
       this.excludeCleared = excludeCleared;
+      this.spawnTiles = refill;
       // A color new tiles must not be, while filling after a clear; -1 if none.
       this.fillExclude = -1;
       // Colors that new tiles can still be.
       this.alive = colors.map((_, i) => i);
       if (board) {
-        this.grid = board.map((row) => row.map((color) => this.newCell(color)));
+        this.grid = board.map((row) => row.map((color) => (color === null || color < 0 ? null : this.newCell(color))));
         if (extinction) this.alive = this.alive.filter((i) => this.colorsOnBoard().has(i));
         this.refreshLegal();
         return;
@@ -123,8 +130,10 @@
       } while (this.refreshLegal().size < MIN_START_MOVES || this.colorsOnBoard().size < colors.length);
     }
 
-    // Returns a new tile, or null if no color can appear any more.
+    // Returns a new tile, or null if no color can appear any more (or, in
+    // puzzle mode, at all).
     newCell(color) {
+      if (color === undefined && !this.spawnTiles) return null;
       if (this.previewing || this.unknownFill) return UNKNOWN;
       if (color === undefined) {
         let pool = this.alive;
@@ -155,6 +164,7 @@
 
     // The board is empty: every color is gone.
     get won() {
+      if (!this.spawnTiles) return this.colorsOnBoard().size === 0;
       return this.extinction && this.alive.length === 0 && this.colorsOnBoard().size === 0;
     }
 
@@ -235,7 +245,9 @@
     // Slides every line along `dir` to close gaps, then fills the space left
     // behind with new cells that enter from the far edge. Returns the new cells
     // with the off-board position each one slides in from.
-    shift(dir) {
+    // Only lines in `only` (a set of line indexes) move, when given: the lines
+    // that just gained a gap.
+    shift(dir, only) {
       const { dr, dc } = DIRS[dir];
       const vertical = dr !== 0;
       const lineCount = vertical ? this.cols : this.rows;
@@ -248,6 +260,7 @@
         // board on the entry side.
         const headR = vertical ? (dr < 0 ? 0 : this.rows - 1) : i;
         const headC = vertical ? i : dc < 0 ? 0 : this.cols - 1;
+        if (only && !only.has(i)) continue;
         kept.length = 0;
         for (let j = 0; j < length; j++) {
           const cell = this.grid[headR - j * dr][headC - j * dc];
@@ -297,6 +310,7 @@
         if (!onBoard(r + dr, c + dc)) continue;
         const cell = this.grid[r + dr][c + dc];
         this.grid[r + dr][c + dc] = null;
+        if (!cell) continue;
         if (onBoard(r + dc, c - dr)) landed.push([cell, r + dc, c - dr]);
         else lost.push({ id: cell.id, toR: r + dc, toC: c - dr });
       }
@@ -322,7 +336,8 @@
       }
       this.grid[r][c] = null;
       const extinct = this.retireColors();
-      return { type: 'shift', dir: color.dir, extinct, spawned: this.shift(color.dir) };
+      const line = new Set([lineIndex(color.dir, r, c)]);
+      return { type: 'shift', dir: color.dir, extinct, spawned: this.shift(color.dir, line) };
     }
 
     // Snapshot of every cell's position, for the renderer.
@@ -338,12 +353,18 @@
       return cells;
     }
 
+    // Removes the cells with the given ids; returns their [r, c] positions.
     removeCells(ids) {
+      const removed = [];
       for (let r = 0; r < this.rows; r++) {
         for (let c = 0; c < this.cols; c++) {
-          if (this.grid[r][c] && ids.has(this.grid[r][c].id)) this.grid[r][c] = null;
+          if (this.grid[r][c] && ids.has(this.grid[r][c].id)) {
+            this.grid[r][c] = null;
+            removed.push([r, c]);
+          }
         }
       }
+      return removed;
     }
 
     // Plays one move. Returns the events describing what happened, or null if
@@ -383,13 +404,14 @@
           this.score += points;
           const ids = new Set(group.map((cell) => cell.id));
           for (const id of ids) marked.delete(id);
-          this.removeCells(ids);
+          const removed = this.removeCells(ids);
           events.push({ type: 'clear', color: colorIndex, ids: [...ids], chain, points, hinted, score: this.score });
           const extinct = this.retireColors();
           if (extinct.length) events.push({ type: 'extinct', colors: extinct });
           if (this.excludeCleared) this.fillExclude = colorIndex;
           if (color.dir) {
-            events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir)) });
+            const lines = new Set(removed.map(([r, c]) => lineIndex(color.dir, r, c)));
+            events.push({ type: 'shift', dir: color.dir, cells: this.layout(this.shift(color.dir, lines)) });
           } else {
             events.push({ type: 'refill', cells: this.layout(this.refill()) });
           }

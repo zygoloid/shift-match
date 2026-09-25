@@ -16,15 +16,29 @@
   <header class="top">
     <h1 class="wordmark">Shift<span>Match</span></h1>
     <div class="actions">
+      <button id="undo" class="ghost icon" type="button" aria-label="Undo" hidden></button>
+      <button id="restart" class="ghost icon" type="button" aria-label="Restart puzzle" hidden></button>
       <button id="hint" class="ghost" type="button">Hint</button>
       <button id="new-game" class="ghost" type="button">New game</button>
     </div>
   </header>
 
+  <nav class="modes" role="tablist" aria-label="Mode">
+    <button type="button" role="tab" data-mode="endless">Endless</button>
+    <button type="button" role="tab" data-mode="puzzle">Puzzles</button>
+  </nav>
+
   <section class="stats" aria-live="polite">
-    <div class="stat"><span class="label">Score</span><span id="score" class="value">0</span></div>
-    <div class="stat"><span class="label">Moves</span><span id="moves" class="value">0</span></div>
-    <div class="stat"><span class="label">Best</span><span id="best" class="value">0</span></div>
+    <div class="stat">
+      <span class="label" id="label-1">Score</span>
+      <span class="value-row">
+        <button id="prev-puzzle" class="step" type="button" aria-label="Previous puzzle" hidden>‹</button>
+        <span id="stat-1" class="value">0</span>
+        <button id="next-puzzle" class="step" type="button" aria-label="Next puzzle" hidden>›</button>
+      </span>
+    </div>
+    <div class="stat"><span class="label" id="label-2">Moves</span><span id="stat-2" class="value">0</span></div>
+    <div class="stat"><span class="label" id="label-3">Best</span><span id="stat-3" class="value">0</span></div>
   </section>
 
   <section class="board-wrap" id="board-wrap">
@@ -34,9 +48,12 @@
       <div class="toast" id="toast" aria-hidden="true"></div>
       <div class="over" id="over" hidden>
         <p class="over-title" id="over-title">No moves left</p>
-        <p class="over-score"><span id="final-score">0</span> points</p>
+        <p class="over-score" id="over-big"></p>
         <p class="over-note" id="over-note"></p>
-        <button id="play-again" type="button">Play again</button>
+        <div class="over-actions">
+          <button id="over-alt" class="ghost" type="button" hidden>Undo</button>
+          <button id="play-again" type="button">Play again</button>
+        </div>
       </div>
     </div>
     <div class="track" id="track">
@@ -51,6 +68,8 @@
   </footer>
 </main>
 <script src="logic.js"></script>
+<script src="puzzles.js"></script>
+<script src="puzzle-pack.js"></script>
 <script src="audio.js"></script>
 <script src="game.js"></script>
 </body>

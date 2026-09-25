@@ -4,6 +4,8 @@
 
   const { Engine, COLORS } = window.ShiftMatch;
   const { Sound } = window.ShiftSound;
+  const Puzzles = window.ShiftPuzzles;
+  const PACK = window.SHIFT_PUZZLE_PACK || [];
   const PALETTE = COLORS;
   const ROWS = 6;
   const COLS = 6;
@@ -11,6 +13,9 @@
   const BEST_KEY = 'shift-match-best';
   const SKIN_KEY = 'shift-match-skin';
   const MUTE_KEY = 'shift-match-muted';
+  const MODE_KEY = 'shift-match-mode';
+  const PUZZLE_KEY = 'shift-match-puzzle';
+  const SOLVED_KEY = 'shift-match-solved';
 
   // Visual themes (see themes.css). `icons` picks the symbol set; `sprinkles`
   // makes clear particles multicolored.
@@ -32,12 +37,18 @@
   const els = {
     board: $('board'),
     wrap: $('board-wrap'),
-    score: $('score'),
-    moves: $('moves'),
-    best: $('best'),
+    stat: [$('stat-1'), $('stat-2'), $('stat-3')],
+    label: [$('label-1'), $('label-2'), $('label-3')],
+    undo: $('undo'),
+    restart: $('restart'),
+    newGame: $('new-game'),
+    prevPuzzle: $('prev-puzzle'),
+    nextPuzzle: $('next-puzzle'),
+    overAlt: $('over-alt'),
+    playAgain: $('play-again'),
+    overBig: $('over-big'),
     toast: $('toast'),
     over: $('over'),
-    finalScore: $('final-score'),
     overNote: $('over-note'),
     overTitle: $('over-title'),
     order: $('order'),
@@ -82,7 +93,22 @@
     '<svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 9h4l5-4v14l-5-4H4z"/>' +
     '<path d="M16.5 9.5l5 5m0-5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>';
 
+  const UNDO_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 7 4 12l5 5M4.5 12H15a5 5 0 0 1 0 10h-3" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -3)"/></svg>';
+  const RESTART_ICON =
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
   const sound = new Sound();
+
+  // 'endless', or 'puzzle': a fixed board from the pack, no new tiles, clear
+  // everything. Each mode keeps its own game while the other is shown.
+  let mode = 'endless';
+  let endlessEngine = null;
+  let puzzleIndex = Math.min(Number(load(PUZZLE_KEY)) || 0, Math.max(0, PACK.length - 1));
+  let solved = readSolved(); // puzzle index -> fewest moves
+  let history = []; // earlier puzzle positions, for Undo
   let skin = SKINS[0];
 
   let engine;
@@ -114,6 +140,14 @@
 
   function saveBest(value) {
     save(BEST_KEY, value);
+  }
+
+  function readSolved() {
+    try {
+      return JSON.parse(load(SOLVED_KEY)) || {};
+    } catch (e) {
+      return {};
+    }
   }
 
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -302,10 +336,33 @@
     cursorAt = -1;
   }
 
+  function tilesLeft() {
+    return engine.grid.reduce((n, row) => n + row.filter(Boolean).length, 0);
+  }
+
+  function setStats(labels, values) {
+    labels.forEach((text, i) => (els.label[i].textContent = text));
+    values.forEach((html, i) => (els.stat[i].innerHTML = html));
+  }
+
   function updateHud() {
-    els.score.textContent = engine.score;
-    els.moves.textContent = engine.moves;
-    els.best.textContent = best;
+    if (mode === 'puzzle') {
+      const done = solved[puzzleIndex] ? '<span class="solved-mark" aria-label="solved">✓</span>' : '';
+      setStats(['Puzzle', 'Tiles', 'Moves'], [`${puzzleIndex + 1}${done}`, tilesLeft(), engine.moves]);
+      els.prevPuzzle.disabled = puzzleIndex === 0;
+      els.nextPuzzle.disabled = puzzleIndex >= PACK.length - 1;
+      els.undo.disabled = busy || !history.length;
+    } else {
+      setStats(['Score', 'Moves', 'Best'], [engine.score, engine.moves, best]);
+    }
+  }
+
+  // Fades the track chips of colors that can't appear any more: in puzzle
+  // mode, any color not on the board.
+  function refreshLegend() {
+    const present = engine.colorsOnBoard();
+    renderLegend();
+    markGone(PALETTE.map((_, i) => i).filter((i) => (mode === 'puzzle' ? !present.has(i) : !engine.alive.includes(i))));
   }
 
   let toastTimer;
@@ -316,7 +373,34 @@
     toastTimer = setTimeout(() => els.toast.classList.remove('show'), T.toast);
   }
 
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+
   function showGameOver() {
+    if (mode === 'puzzle') {
+      const known = PACK[puzzleIndex].solution.split(' ').length;
+      if (engine.won) {
+        const previous = solved[puzzleIndex];
+        if (!previous || engine.moves < previous) {
+          solved[puzzleIndex] = engine.moves;
+          save(SOLVED_KEY, JSON.stringify(solved));
+        }
+        els.overTitle.textContent = `Puzzle ${puzzleIndex + 1} solved`;
+        els.overBig.textContent = plural(engine.moves, 'move');
+        els.overNote.textContent = engine.moves <= known ? 'As short as the known solution' : `Known solution: ${plural(known, 'move')}`;
+        els.overAlt.hidden = true;
+        els.playAgain.textContent = puzzleIndex < PACK.length - 1 ? 'Next puzzle' : 'Play again';
+      } else {
+        els.overTitle.textContent = 'Stuck';
+        els.overBig.textContent = `${plural(tilesLeft(), 'tile')} left`;
+        els.overNote.textContent = 'No move lines up a group.';
+        els.overAlt.hidden = false;
+        els.overAlt.textContent = 'Undo';
+        els.playAgain.textContent = 'Restart';
+      }
+      updateHud();
+      els.over.hidden = false;
+      return;
+    }
     els.overTitle.textContent = engine.won ? 'Board cleared' : 'No moves left';
     const isBest = engine.score > best;
     if (isBest) {
@@ -324,9 +408,11 @@
       saveBest(best);
     }
     updateHud();
-    els.finalScore.textContent = engine.score;
-    const played = `${engine.moves} ${engine.moves === 1 ? 'move' : 'moves'}`;
+    els.overBig.textContent = `${engine.score} points`;
+    const played = plural(engine.moves, 'move');
     els.overNote.textContent = isBest ? `${played} · New best score` : `${played} · Best: ${best}`;
+    els.overAlt.hidden = true;
+    els.playAgain.textContent = 'Play again';
     els.over.hidden = false;
   }
 
@@ -366,8 +452,12 @@
           sound.clear(ev.chain, ev.ids.length);
           burst(ev.ids);
           tagTiles(ev.ids, 'clearing');
-          els.score.textContent = ev.score;
-          toast((ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`) + (ev.hinted ? ' ½' : ''));
+          if (mode === 'puzzle') {
+            if (ev.chain > 1) toast(`Chain ×${ev.chain}`);
+          } else {
+            els.stat[0].textContent = ev.score;
+            toast((ev.chain > 1 ? `Chain ×${ev.chain}  +${ev.points}` : `+${ev.points}`) + (ev.hinted ? ' ½' : ''));
+          }
           await wait(T.clear * pace);
           dropTiles(ev.ids);
           break;
@@ -379,6 +469,7 @@
         case 'end':
           await finishPass();
           setPace(1);
+          if (mode === 'puzzle') refreshLegend();
           updateHud();
           if (ev.won) sound.win();
           else if (ev.gameOver) sound.lose();
@@ -404,15 +495,33 @@
 
   let hintedId = null;
 
-  // Highlights one legal move, picked at random. The button stays disabled
-  // until a move is made.
-  function showHint() {
-    if (busy || engine.gameOver || hintedId !== null) return;
-    const moves = [...engine.legal];
-    const [r, c] = moves[Math.floor(Math.random() * moves.length)].split(',').map(Number);
+  function highlight(r, c) {
     hintedId = engine.grid[r][c].id;
     tiles.get(hintedId).classList.add('hinted');
     els.hint.disabled = true;
+  }
+
+  // Endless: highlights one legal move, picked at random. Puzzles: highlights
+  // a move from which the board can still be cleared. The button stays
+  // disabled until a move is made.
+  function showHint() {
+    if (busy || engine.gameOver || hintedId !== null) return;
+    if (mode === 'puzzle') {
+      els.hint.disabled = true;
+      // Let the button repaint before the (blocking) search.
+      setTimeout(() => {
+        const grid = engine.grid.map((row) => row.map((cell) => (cell ? cell.color : -1)));
+        const way = Puzzles.solve(grid, 60000);
+        if (way && way.length) highlight(...way[0]);
+        else {
+          toast(way === null ? 'No way to clear from here. Undo?' : 'Too tricky to check');
+          els.hint.disabled = false;
+        }
+      }, 30);
+      return;
+    }
+    const moves = [...engine.legal];
+    highlight(...moves[Math.floor(Math.random() * moves.length)].split(',').map(Number));
   }
 
   function clearHint() {
@@ -426,6 +535,7 @@
     const rect = els.board.getBoundingClientRect();
     const r = Math.floor((event.clientY - rect.top) / cell);
     const c = Math.floor((event.clientX - rect.left) / cell);
+    const before = mode === 'puzzle' ? engine.clone() : null;
     const events = engine.tap(r, c, { hinted: hintedId !== null });
     if (!events) {
       if (r >= 0 && r < ROWS && c >= 0 && c < COLS) sound.refuse();
@@ -433,18 +543,38 @@
       return;
     }
     sound.tap();
+    if (before) history.push(before);
     busy = true;
     clearHint();
     els.hint.disabled = true;
-    els.moves.textContent = engine.moves;
+    els.undo.disabled = true;
     try {
       await play(events);
     } finally {
       busy = false;
       els.hint.disabled = engine.gameOver;
+      updateHud();
     }
   }
 
+  // Shows `engine` from scratch, without animation.
+  function redraw() {
+    for (const el of tiles.values()) el.remove();
+    tiles = new Map();
+    busy = false;
+    hintedId = null;
+    els.hint.disabled = engine.gameOver;
+    refreshLegend();
+    els.over.hidden = true;
+    hideCursor();
+    setPace(1);
+    resize();
+    sync(engine.layout(), false);
+    updateHud();
+    if (engine.gameOver) showGameOver();
+  }
+
+  // Starts a new endless game (or restores one from `state`).
   function start(state) {
     if (state && state.grid) {
       engine = new Engine({ board: state.grid, colors: PALETTE });
@@ -453,20 +583,47 @@
     } else {
       engine = new Engine({ rows: ROWS, cols: COLS, colors: PALETTE });
     }
-    for (const el of tiles.values()) el.remove();
-    tiles = new Map();
-    busy = false;
-    hintedId = null;
-    els.hint.disabled = engine.gameOver;
-    renderLegend();
-    markGone(PALETTE.map((_, i) => i).filter((i) => !engine.alive.includes(i)));
-    els.over.hidden = true;
-    hideCursor();
-    setPace(1);
-    resize();
-    sync(engine.layout(), false);
-    updateHud();
-    if (engine.gameOver) showGameOver();
+    endlessEngine = engine;
+    redraw();
+  }
+
+  const LETTERS = PALETTE.map((c) => c.name[0].toUpperCase());
+
+  function loadPuzzle(i) {
+    puzzleIndex = Math.max(0, Math.min(i, PACK.length - 1));
+    save(PUZZLE_KEY, puzzleIndex);
+    const board = PACK[puzzleIndex].board.map((row) => [...row].map((ch) => (ch === '.' ? -1 : LETTERS.indexOf(ch))));
+    engine = new Engine({ board, colors: PALETTE, refill: false, extinction: false });
+    history = [];
+    redraw();
+  }
+
+  function undo() {
+    if (busy || !history.length) return;
+    engine = history.pop();
+    redraw();
+  }
+
+  function setMode(next, puzzle) {
+    if (next === 'puzzle' && !PACK.length) next = 'endless';
+    if (mode === 'endless' && engine) endlessEngine = engine;
+    mode = next;
+    save(MODE_KEY, mode);
+    document.body.dataset.mode = mode;
+    for (const tab of document.querySelectorAll('.modes [data-mode]')) {
+      tab.setAttribute('aria-selected', String(tab.dataset.mode === mode));
+    }
+    const inPuzzle = mode === 'puzzle';
+    els.undo.hidden = !inPuzzle;
+    els.restart.hidden = !inPuzzle;
+    els.prevPuzzle.hidden = !inPuzzle;
+    els.nextPuzzle.hidden = !inPuzzle;
+    els.newGame.hidden = inPuzzle;
+    if (inPuzzle) loadPuzzle(puzzle === undefined ? puzzleIndex : puzzle);
+    else if (endlessEngine) {
+      engine = endlessEngine;
+      redraw();
+    } else start();
   }
 
   // ---- Themes and sound ----
@@ -515,23 +672,43 @@
   setMuted(load(MUTE_KEY) === '1');
 
   els.board.addEventListener('click', onTap);
-  $('new-game').addEventListener('click', () => start());
+  els.newGame.addEventListener('click', () => start());
   els.hint.addEventListener('click', showHint);
-  $('play-again').addEventListener('click', () => start());
+  els.undo.innerHTML = UNDO_ICON;
+  els.restart.innerHTML = RESTART_ICON;
+  els.undo.addEventListener('click', undo);
+  els.restart.addEventListener('click', () => loadPuzzle(puzzleIndex));
+  els.prevPuzzle.addEventListener('click', () => loadPuzzle(puzzleIndex - 1));
+  els.nextPuzzle.addEventListener('click', () => loadPuzzle(puzzleIndex + 1));
+  els.overAlt.addEventListener('click', undo);
+  els.playAgain.addEventListener('click', () => {
+    if (mode !== 'puzzle') start();
+    else if (engine.won && puzzleIndex < PACK.length - 1) loadPuzzle(puzzleIndex + 1);
+    else loadPuzzle(puzzleIndex);
+  });
+  for (const tab of document.querySelectorAll('.modes [data-mode]')) {
+    tab.addEventListener('click', () => tab.dataset.mode !== mode && setMode(tab.dataset.mode));
+  }
   if (window.ResizeObserver) new ResizeObserver(resize).observe(els.wrap);
   else window.addEventListener('resize', resize);
 
   // Keeps an in-progress game across live reloads of a hosted copy.
   const hot = window.claude && window.claude.hot;
   if (hot && hot.snapshot) {
-    hot.snapshot(() =>
-      engine.gameOver
+    hot.snapshot(() => {
+      if (mode === 'puzzle') return { mode, puzzle: puzzleIndex };
+      return engine.gameOver
         ? {}
-        : { grid: engine.grid.map((row) => row.map((c) => c.color)), score: engine.score, moves: engine.moves }
-    );
+        : { grid: engine.grid.map((row) => row.map((c) => c.color)), score: engine.score, moves: engine.moves };
+    });
   }
-  const begin = (state) => {
-    start(state);
+  const begin = (state = {}) => {
+    if (state.mode === 'puzzle') setMode('puzzle', state.puzzle);
+    else if (load(MODE_KEY) === 'puzzle' && !state.grid) setMode('puzzle');
+    else {
+      setMode('endless');
+      if (state.grid) start(state);
+    }
     applySkin(load(SKIN_KEY) || 'classic');
   };
   if (hot && hot.ready) hot.ready(begin);

@@ -128,6 +128,29 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* Mode tabs */
+
+.modes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--well);
+  box-shadow: inset 0 0 0 1px var(--well-edge);
+}
+
+.modes button {
+  padding: 8px;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+}
+
+.modes button[aria-selected="true"] {
+  color: var(--ground);
+  background: var(--ink);
+}
+
 /* Stats */
 
 .stats {
@@ -152,6 +175,29 @@ button:focus-visible {
 .stat .value {
   font: 700 26px/1.1 var(--display);
   font-variant-numeric: tabular-nums;
+}
+
+.value-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+button.step {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 18px;
+  color: var(--ink);
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--well-edge);
+}
+
+.solved-mark {
+  margin-left: 2px;
+  font-size: 0.6em;
+  color: var(--green);
+  vertical-align: middle;
 }
 
 /* Board */
@@ -182,6 +228,12 @@ button:focus-visible {
   touch-action: manipulation;
   user-select: none;
   -webkit-user-select: none;
+}
+
+/* In puzzle mode, empty cells stay empty: a faint dot marks each slot. */
+body[data-mode="puzzle"] .board {
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--ink) 14%, transparent) 2.5px, transparent 3px);
+  background-size: var(--cell) var(--cell);
 }
 
 .tile {
@@ -312,6 +364,11 @@ button:focus-visible {
 .over-title { font: 700 16px/1.2 var(--display); color: var(--muted); }
 .over-score { font: 800 40px/1.1 var(--display); font-variant-numeric: tabular-nums; }
 .over-note { min-height: 1.4em; color: var(--muted); margin-bottom: 8px !important; }
+
+.over-actions {
+  display: flex;
+  gap: 8px;
+}
 
 /* Clear-order track */
 
